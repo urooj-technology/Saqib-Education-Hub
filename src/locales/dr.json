@@ -1,0 +1,187 @@
+{
+  "navigation": {
+    "home": "خانه",
+    "books": "کتاب‌ها",
+    "jobs": "شغل‌ها",
+    "scholarships": "بورسیه‌ها",
+    "articles": "مقالات",
+    "videos": "ویدیوها",
+    "admin": "مدیریت",
+    "login": "ورود",
+    "register": "ثبت‌نام",
+    "profile": "پروفایل",
+    "logout": "خروج"
+  },
+  "home": {
+    "hero": {
+      "title": "به مرکز آموزشی نور ساقب خوش آمدید",
+      "subtitle": "درگاه شما به دانش، فرصت‌ها و رشد",
+      "description": "کتاب‌ها را کشف کنید، شغل پیدا کنید، بورسیه‌ها را بررسی کنید، مقالات بخوانید و ویدیوهای آموزشی تماشا کنید.",
+      "cta": "شروع کنید"
+    },
+    "features": {
+      "books": {
+        "title": "کتابخانه دیجیتال",
+        "description": "به هزاران کتاب PDF در موضوعات مختلف دسترسی پیدا کنید"
+      },
+      "jobs": {
+        "title": "فرصت‌های شغلی",
+        "description": "شغل رویایی خود را با تابلو شغل جامع ما پیدا کنید"
+      },
+      "scholarships": {
+        "title": "بورسیه‌ها",
+        "description": "فرصت‌های مالی برای تحصیل خود را کشف کنید"
+      },
+      "articles": {
+        "title": "مقالات آموزشی",
+        "description": "با جدیدترین محتوای آموزشی به‌روز بمانید"
+      },
+      "videos": {
+        "title": "یادگیری ویدیویی",
+        "description": "از طریق محتوای ویدیویی آموزشی منتخب یاد بگیرید"
+      }
+    }
+  },
+  "books": {
+    "title": "کتابخانه دیجیتال",
+    "search": "جستجوی کتاب‌ها...",
+    "categories": "دسته‌بندی‌ها",
+    "all": "همه دسته‌بندی‌ها",
+    "science": "علوم",
+    "history": "تاریخ",
+    "technology": "تکنولوژی",
+    "literature": "ادبیات",
+    "mathematics": "ریاضیات",
+    "download": "دانلود",
+    "preview": "پیش‌نمایش",
+    "author": "نویسنده",
+    "pages": "صفحات",
+    "language": "زبان",
+    "uploadDate": "تاریخ آپلود"
+  },
+  "jobs": {
+    "title": "فرصت‌های شغلی",
+    "search": "جستجوی شغل‌ها...",
+    "postJob": "ثبت شغل",
+    "subscribe": "اشتراک برای ثبت شغل",
+    "categories": "دسته‌بندی شغل‌ها",
+    "all": "همه شغل‌ها",
+    "fullTime": "تمام وقت",
+    "partTime": "نیمه وقت",
+    "remote": "دورکاری",
+    "internship": "کارآموزی",
+    "contract": "قراردادی",
+    "apply": "درخواست دهید",
+    "posted": "ثبت شده",
+    "location": "مکان",
+    "salary": "حقوق",
+    "company": "شرکت",
+    "description": "توضیحات شغل",
+    "requirements": "نیازمندی‌ها",
+    "benefits": "مزایا"
+  },
+  "scholarships": {
+    "title": "بورسیه‌ها",
+    "search": "جستجوی بورسیه‌ها...",
+    "filter": "فیلتر بر اساس",
+    "country": "کشور",
+    "field": "رشته تحصیلی",
+    "deadline": "مهلت",
+    "amount": "مبلغ",
+    "level": "سطح تحصیلات",
+    "undergraduate": "کارشناسی",
+    "graduate": "کارشناسی ارشد",
+    "phd": "دکترا",
+    "apply": "درخواست دهید",
+    "details": "مشاهده جزئیات",
+    "eligibility": "شرایط",
+    "requirements": "نیازمندی‌ها",
+    "applicationProcess": "فرآیند درخواست"
+  },
+  "articles": {
+    "title": "مقالات آموزشی",
+    "search": "جستجوی مقالات...",
+    "categories": "دسته‌بندی‌ها",
+    "all": "همه مقالات",
+    "education": "آموزش",
+    "technology": "تکنولوژی",
+    "career": "شغل",
+    "research": "تحقیق",
+    "readMore": "بیشتر بخوانید",
+    "published": "منتشر شده",
+    "author": "نویسنده",
+    "tags": "برچسب‌ها",
+    "share": "اشتراک‌گذاری"
+  },
+  "videos": {
+    "title": "ویدیوهای آموزشی",
+    "search": "جستجوی ویدیوها...",
+    "categories": "دسته‌بندی‌ها",
+    "all": "همه ویدیوها",
+    "tutorials": "آموزشی",
+    "lectures": "سخنرانی‌ها",
+    "documentaries": "مستندات",
+    "interviews": "مصاحبه‌ها",
+    "duration": "مدت",
+    "views": "بازدیدها",
+    "uploaded": "آپلود شده",
+    "description": "توضیحات"
+  },
+  "admin": {
+    "dashboard": "داشبورد",
+    "users": "کاربران",
+    "books": "مدیریت کتاب‌ها",
+    "jobs": "مدیریت شغل‌ها",
+    "scholarships": "مدیریت بورسیه‌ها",
+    "articles": "مدیریت مقالات",
+    "videos": "مدیریت ویدیوها",
+    "subscriptions": "اشتراک‌ها",
+    "analytics": "تحلیل‌ها",
+    "settings": "تنظیمات",
+    "addNew": "افزودن جدید",
+    "edit": "ویرایش",
+    "delete": "حذف",
+    "approve": "تایید",
+    "reject": "رد",
+    "status": "وضعیت",
+    "pending": "در انتظار",
+    "approved": "تایید شده",
+    "rejected": "رد شده"
+  },
+  "auth": {
+    "login": "ورود",
+    "register": "ثبت‌نام",
+    "email": "ایمیل",
+    "password": "رمز عبور",
+    "confirmPassword": "تایید رمز عبور",
+    "firstName": "نام",
+    "lastName": "نام خانوادگی",
+    "forgotPassword": "رمز عبور را فراموش کرده‌اید؟",
+    "rememberMe": "مرا به خاطر بسپار",
+    "signIn": "ورود",
+    "signUp": "ثبت‌نام",
+    "alreadyHaveAccount": "قبلاً حساب دارید؟",
+    "dontHaveAccount": "حساب ندارید؟"
+  },
+  "common": {
+    "loading": "در حال بارگذاری...",
+    "error": "خطایی رخ داد",
+    "success": "موفقیت",
+    "cancel": "لغو",
+    "save": "ذخیره",
+    "submit": "ارسال",
+    "back": "بازگشت",
+    "next": "بعدی",
+    "previous": "قبلی",
+    "close": "بستن",
+    "open": "باز کردن",
+    "search": "جستجو",
+    "filter": "فیلتر",
+    "sort": "مرتب‌سازی",
+    "view": "مشاهده",
+    "edit": "ویرایش",
+    "delete": "حذف",
+    "noResults": "نتیجه‌ای یافت نشد",
+    "noData": "داده‌ای موجود نیست"
+  }
+} 
