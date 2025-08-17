@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowRight, BookOpen, Briefcase, GraduationCap, FileText, Video, Search, Users, Award, Star, Clock, MapPin, TrendingUp, Globe, Shield, Zap } from 'lucide-react';
 import Layout from '../components/Layout';
 
@@ -275,9 +276,11 @@ export default function Home() {
             {testimonials.map((testimonial, index) => (
               <div key={index} className="bg-white p-8 rounded-xl shadow-lg">
                 <div className="flex items-center mb-4">
-                  <img
+                  <Image
                     src={testimonial.avatar}
                     alt={testimonial.name}
+                    width={48}
+                    height={48}
                     className="w-12 h-12 rounded-full mr-4"
                   />
                   <div>
@@ -291,7 +294,7 @@ export default function Home() {
                   ))}
                 </div>
                 <p className="text-gray-600 leading-relaxed">
-                  "{testimonial.content}"
+                  &ldquo;{testimonial.content}&rdquo;
                 </p>
               </div>
             ))}

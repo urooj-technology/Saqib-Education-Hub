@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Search, Play, Clock, Eye, ThumbsUp, Calendar, User, X } from 'lucide-react';
 import Layout from '../../components/Layout';
 
@@ -203,9 +204,11 @@ export default function Videos() {
             {sortedVideos.map((video) => (
               <div key={video.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100">
                 <div className="relative">
-                  <img
+                  <Image
                     src={video.thumbnail}
                     alt={video.title}
+                    width={800}
+                    height={400}
                     className="w-full h-48 object-cover"
                   />
                   <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center">

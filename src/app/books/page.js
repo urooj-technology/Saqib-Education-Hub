@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Search, Filter, Download, Eye, Star, Clock, User, Calendar, BookOpen, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import Layout from '../../components/Layout';
 
@@ -259,9 +260,11 @@ export default function Books() {
               <div key={book.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group">
                 {/* Book Cover */}
                 <div className="relative h-64 bg-gray-200 overflow-hidden">
-                  <img
+                  <Image
                     src={book.cover}
                     alt={book.title}
+                    width={300}
+                    height={400}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                   <div className="absolute top-3 right-3 bg-blue-600 text-white px-2 py-1 rounded-full text-xs font-medium">
@@ -344,9 +347,11 @@ export default function Books() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Book Cover */}
                 <div className="relative">
-                  <img
+                  <Image
                     src={selectedBook.cover}
                     alt={selectedBook.title}
+                    width={300}
+                    height={400}
                     className="w-full h-96 object-cover rounded-lg"
                   />
                   <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium">

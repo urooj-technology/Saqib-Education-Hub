@@ -12,7 +12,7 @@ const navigation = [
   { name: 'navigation.scholarships', href: '/scholarships', icon: GraduationCap },
   { name: 'navigation.articles', href: '/articles', icon: FileText },
   { name: 'navigation.videos', href: '/videos', icon: Video },
-  { name: 'navigation.admin', href: '/admin', icon: Building2 },
+  // { name: 'navigation.admin', href: '/admin', icon: Building2 },
 ];
 
 export default function Header({ translations, currentLang, onLanguageChange }) {

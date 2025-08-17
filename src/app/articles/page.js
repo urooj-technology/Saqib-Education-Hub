@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Search, Calendar, User, Eye, Heart, Share2, Clock, Tag, X } from 'lucide-react';
 import Layout from '../../components/Layout';
 
@@ -209,9 +210,11 @@ export default function Articles() {
             {sortedArticles.map((article) => (
               <div key={article.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100">
                 <div className="relative h-48 bg-gray-200 overflow-hidden">
-                  <img
+                  <Image
                     src={article.image}
                     alt={article.title}
+                    width={800}
+                    height={400}
                     className="w-full h-full object-cover"
                   />
                   {article.featured && (
@@ -300,9 +303,11 @@ export default function Articles() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
                   <div className="mb-6">
-                    <img
+                    <Image
                       src={selectedArticle.image}
                       alt={selectedArticle.title}
+                      width={800}
+                      height={400}
                       className="w-full h-64 object-cover rounded-lg mb-4"
                     />
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">Article Content</h3>
