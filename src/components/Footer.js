@@ -12,7 +12,7 @@ export default function Footer({ translations }) {
               <div className="w-8 h-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold">نور ساقب</span>
+              <span className="text-xl font-bold">Saqib</span>
             </div>
             <p className="text-gray-300 mb-4 max-w-md">
               Your gateway to knowledge, opportunities, and growth. Discover books, find jobs, explore scholarships, 

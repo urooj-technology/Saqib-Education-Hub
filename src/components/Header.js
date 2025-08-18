@@ -28,10 +28,10 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
           <div className="flex items-center">
                         <Link href="/" className="flex items-center space-x-2 lg:space-x-3 group">
               <div className="w-8 h-8 lg:w-10 lg:h-10 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                <span className="text-white text-lg lg:text-xl font-bold">ن</span>
+                <span className="text-white text-lg lg:text-xl font-bold">S</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-lg lg:text-xl font-bold text-gray-900">نور ساقب</span>
+                <span className="text-lg lg:text-xl font-bold text-gray-900">Saqib</span>
                 <span className="text-xs text-gray-500 hidden sm:block">Education Hub</span>
               </div>
             </Link>
