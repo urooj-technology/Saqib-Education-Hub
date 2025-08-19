@@ -91,7 +91,7 @@
             <div className="text-gray-400 text-sm text-center md:text-left">
               <p>© 2025 All Right Reserved</p>
               <p className="mt-1">
-                Made with ❤️ by <a href="https://uroojtech.com" className="text-white hover:text-gray-300 transition-colors">Urooj Technology</a>
+                Made with ❤️ by <a href="https://urooj-tech.com" className="text-white hover:text-gray-300 transition-colors">Urooj Technology</a>
               </p>
             </div>
             <div className="flex space-x-6 mt-4 md:mt-0">
