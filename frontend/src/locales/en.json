@@ -1,0 +1,75 @@
+{
+  "auth": {
+    "signIn": "Sign In",
+    "signInText": "Sign in to your account to continue",
+    "email": "Email",
+    "password": "Password",
+    "rememberMe": "Remember me",
+    "forgotPassword": "Forgot password?",
+    "login": "Sign In",
+    "loginHelp": "Need help? Contact support",
+    "emailRequired": "Email is required",
+    "emailInvalid": "Please enter a valid email",
+    "passwordRequired": "Password is required",
+    "passwordMinLength": "Password must be at least 6 characters",
+    "loginFailed": "Login failed. Please try again.",
+    "signingIn": "Signing in...",
+    "welcomeBack": "Welcome Back",
+    "signInToContinue": "Sign in to continue",
+    "dontHaveAccount": "Don't have an account?",
+    "signUp": "Sign Up"
+  },
+  "settings": {
+    "language": "Language"
+  },
+  "common": {
+    "language": "Language"
+  },
+  "api": {
+    "success": "Operation successful!",
+    "error": "An error occurred. Please try again."
+  },
+  "navigation": {
+    "home": "Home",
+    "books": "Books",
+    "jobs": "Jobs",
+    "scholarships": "Scholarships",
+    "articles": "Articles",
+    "videos": "Videos",
+    "about": "About Us",
+    "contact": "Contact",
+    "login": "Login",
+    "register": "Register",
+    "profile": "Profile"
+  },
+  "home": {
+    "hero": {
+      "title": "Welcome to Noor Saqib Education Hub",
+      "subtitle": "Your gateway to knowledge, opportunities, and growth",
+      "description": "Discover books, find jobs, explore scholarships, read articles, and watch educational videos all in one place.",
+      "cta": "Get Started"
+    },
+    "features": {
+      "books": {
+        "title": "Digital Library",
+        "description": "Access thousands of PDF books across various subjects"
+      },
+      "jobs": {
+        "title": "Career Opportunities",
+        "description": "Find your dream job with our comprehensive job board"
+      },
+      "scholarships": {
+        "title": "Scholarships",
+        "description": "Discover funding opportunities for your education"
+      },
+      "articles": {
+        "title": "Educational Articles",
+        "description": "Stay updated with the latest educational content"
+      },
+      "videos": {
+        "title": "Video Learning",
+        "description": "Learn through curated educational video content"
+      }
+    }
+  }
+} 

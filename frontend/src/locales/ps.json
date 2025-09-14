@@ -1,0 +1,189 @@
+{
+  "navigation": {
+    "home": "کور",
+    "books": "کتابونه",
+    "jobs": "دندې",
+    "scholarships": "سکالرشیپونه",
+    "articles": "مقالې",
+    "videos": "ویډیوګانې",
+    "about": "زموږ په اړه",
+    "contact": "اړیکه",
+    "admin": "اداره",
+    "login": "ننوتل",
+    "register": "ثبتول",
+    "profile": "پروفایل",
+    "logout": "وتل"
+  },
+  "home": {
+    "hero": {
+      "title": "نور ساقب تعلیمي مرکز ته ښه راغلاست",
+      "subtitle": "ستاسو د پوهې، فرصتونو او ودې لار",
+      "description": "کتابونه ومومئ، دندې ومومئ، سکالرشیپونه وڅیړئ، مقالې ولولئ او د تعلیمي ویډیوګانو سره زده کړه وکړئ.",
+      "cta": "پیل وکړئ"
+    },
+    "features": {
+      "books": {
+        "title": "ډیجیټل کتابتون",
+        "description": "د مختلفو موضوعاتو په اړه زرهګون PDF کتابونه ته لاسرسی ومومئ"
+      },
+      "jobs": {
+        "title": "د مسلکي فرصتونه",
+        "description": "د زموږ په بشپړ دنده ورکولو سره ستاسو د خوښې دنده ومومئ"
+      },
+      "scholarships": {
+        "title": "سکالرشیپونه",
+        "description": "د ستاسو د تعلیم لپاره د پیسو د فرصتونو موندل"
+      },
+      "articles": {
+        "title": "د تعلیمي مقالې",
+        "description": "د وروستي تعلیمي منځپانګې سره تازه پاتې شئ"
+      },
+      "videos": {
+        "title": "د ویډیو له لارې زده کړه",
+        "description": "د ګڼ شوي تعلیمي ویډیو منځپانګې له لارې زده کړه وکړئ"
+      }
+    }
+  },
+  "books": {
+    "title": "ډیجیټل کتابتون",
+    "search": "کتابونه ولټوئ...",
+    "categories": "کټګورۍ",
+    "all": "ټول کټګورۍ",
+    "science": "ساینس",
+    "history": "تاریخ",
+    "technology": "تکنالوژي",
+    "literature": "ادبیات",
+    "mathematics": "ریاضیات",
+    "download": "ډاونلوډ",
+    "preview": "مخکتنه",
+    "author": "لیکوال",
+    "pages": "پاڼې",
+    "language": "ژبه",
+    "uploadDate": "د اپلوډ نیټه"
+  },
+  "jobs": {
+    "title": "د مسلکي فرصتونه",
+    "search": "دندې ولټوئ...",
+    "postJob": "دنده اعلان کړئ",
+    "subscribe": "د دندو د اعلان لپاره ګډون وکړئ",
+    "categories": "د دندو کټګورۍ",
+    "all": "ټول دندې",
+    "fullTime": "بشپړ وخت",
+    "partTime": "نیمه وخت",
+    "remote": "لرې",
+    "internship": "د زده کړې دوره",
+    "contract": "تړون",
+    "apply": "اوس غوښتنه وکړئ",
+    "posted": "پوسټ شوی",
+    "location": "ځای",
+    "salary": "معاش",
+    "company": "شرکت",
+    "description": "د دندې تشریح",
+    "requirements": "اړتیاوې",
+    "benefits": "ګټې"
+  },
+  "scholarships": {
+    "title": "سکالرشیپونه",
+    "search": "سکالرشیپونه ولټوئ...",
+    "filter": "د فیلټر له لارې",
+    "country": "هیواد",
+    "field": "د زده کړې ساحه",
+    "deadline": "پای نیټه",
+    "amount": "مقدار",
+    "level": "د تعلیم کچه",
+    "undergraduate": "د لیسانس",
+    "graduate": "د ماسټرۍ",
+    "phd": "د پی ایچ ډي",
+    "apply": "اوس غوښتنه وکړئ",
+    "details": "تفصیلات وګورئ",
+    "eligibility": "وړتیا",
+    "requirements": "اړتیاوې",
+    "applicationProcess": "د غوښتنې پروسه"
+  },
+  "articles": {
+    "title": "د تعلیمي مقالې",
+    "search": "مقالې ولټوئ...",
+    "categories": "کټګورۍ",
+    "all": "ټول مقالې",
+    "education": "تعلیم",
+    "technology": "تکنالوژي",
+    "career": "مسلک",
+    "research": "تحقیق",
+    "readMore": "نور ولولئ",
+    "published": "خپور شوی",
+    "author": "لیکوال",
+    "tags": "نښانې",
+    "share": "شریک کړئ"
+  },
+  "videos": {
+    "title": "د تعلیمي ویډیوګانې",
+    "search": "ویډیوګانې ولټوئ...",
+    "categories": "کټګورۍ",
+    "all": "ټول ویډیوګانې",
+    "tutorials": "ښوونې",
+    "lectures": "لکچرونه",
+    "documentaries": "ډاکیومنټري",
+    "interviews": "مرکې",
+    "duration": "موده",
+    "views": "لیدل",
+    "uploaded": "اپلوډ شوی",
+    "description": "تشریح"
+  },
+  "admin": {
+    "dashboard": "ډاشبورډ",
+    "users": "کارنونه",
+    "books": "کتابونه اداره کړئ",
+    "jobs": "دندې اداره کړئ",
+    "scholarships": "سکالرشیپونه اداره کړئ",
+    "articles": "مقالې اداره کړئ",
+    "videos": "ویډیوګانې اداره کړئ",
+    "subscriptions": "ګډونونه",
+    "analytics": "تحلیلونه",
+    "settings": "تنظیمات",
+    "addNew": "نوی اضافه کړئ",
+    "edit": "سم کړئ",
+    "delete": "ړنګ کړئ",
+    "approve": "منل",
+    "reject": "رد کړئ",
+    "status": "حالت",
+    "pending": "د انتظار",
+    "approved": "منل شوی",
+    "rejected": "رد شوی"
+  },
+  "auth": {
+    "login": "ننوتل",
+    "register": "ثبتول",
+    "email": "بریښنالیک",
+    "password": "پټ نوم",
+    "confirmPassword": "پټ نوم تایید کړئ",
+    "firstName": "لومړی نوم",
+    "lastName": "وروستی نوم",
+    "forgotPassword": "پټ نوم هیر شوی؟",
+    "rememberMe": "ما په یاد وساتئ",
+    "signIn": "ننوتل",
+    "signUp": "ثبتول",
+    "alreadyHaveAccount": "دمخه حساب لرئ؟",
+    "dontHaveAccount": "حساب نلرئ؟"
+  },
+  "common": {
+    "loading": "بار کیدل...",
+    "error": "یو تیروتنه رامنځته شوه",
+    "success": "بریالیتوب",
+    "cancel": "لغوه کړئ",
+    "save": "ساتل",
+    "submit": "سپارل",
+    "back": "شاته",
+    "next": "راتلونکی",
+    "previous": "مخکینی",
+    "close": "تړل",
+    "open": "پرانیستل",
+    "search": "لټون",
+    "filter": "فیلټر",
+    "sort": "ترتیب",
+    "view": "لیدل",
+    "edit": "سم کول",
+    "delete": "ړنګول",
+    "noResults": "هیڅ پایلې و نه موندل شول",
+    "noData": "هیڅ معلومات نشته"
+  }
+} 
