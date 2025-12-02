@@ -12,22 +12,19 @@ import {
   Plus,
   User,
   Search,
-  ChevronDown
+  ChevronDown,
+  X,
+  Loader2
 } from 'lucide-react';
-import AdminLayout from '../../../../../components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import useFetchObject from '../../../../../api/useFetchObject';
-import useUpdate from '../../../../../api/useUpdate';
-import useFetchObjects from '../../../../../api/useFetchObjects';
-import { useAuth } from '../../../../../context/AuthContext';
-
-const categories = [
-  'Mathematics', 'Computer Science', 'Physics', 'Chemistry', 
-  'Biology', 'Literature', 'History', 'Geography', 'Economics',
-  'Psychology', 'Philosophy', 'Art', 'Music', 'Sports',
-  'Engineering', 'Medicine', 'Law', 'Business', 'Education'
-];
+import useFetchObject from '@/api/useFetchObject';
+import useUpdate from '@/api/useUpdate';
+import useAdd from '@/api/useAdd';
+import useFetchObjects from '@/api/useFetchObjects';
+import { useAuth } from '@/context/AuthContext';
+import { uploadFileInChunks } from '@/utils/chunkedUpload';
 
 const languages = ['English', 'Arabic', 'Pashto', 'Dari', 'French', 'German', 'Spanish', 'Urdu', 'Persian'];
 const formats = ['pdf', 'epub', 'mobi', 'docx', 'txt', 'html'];
@@ -56,8 +53,22 @@ export default function EditBook() {
     'Failed to update book'
   );
 
+  // Fetch book categories dynamically
+  const { data: categoriesData, loading: categoriesLoading, refetch: refetchCategories } = useFetchObjects(
+    "book-categories",
+    "book-categories", 
+    token
+  );
+  const bookCategories = categoriesData?.data?.categories || [];
+
   // Fetch existing authors for selection
-  const { data: fetchedAuthors, loading: authorsLoading } = useFetchObjects("authors", "authors", token);
+  const { data: authorsData, loading: authorsLoading, refetch: refetchAuthors } = useFetchObjects("authors", "authors?limit=1000", token);
+
+  // Hook for creating new authors
+  const { handleAdd: handleAddAuthor, loading: authorCreating } = useAdd('authors', token);
+  
+  // Hook for creating new categories
+  const { handleAdd: handleAddCategory, loading: createCategoryLoading } = useAdd('book-categories', token);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -71,24 +82,49 @@ export default function EditBook() {
     format: 'pdf',
     price: '0.00',
     currency: 'USD',
-    status: 'draft'
+    status: 'draft',
+    tags: []
   });
 
-  const [authors, setAuthors] = useState([]);
-  const [existingAuthors, setExistingAuthors] = useState([]);
+  const [selectedAuthorIds, setSelectedAuthorIds] = useState([]); // Array of selected author IDs
   const [authorSearchTerm, setAuthorSearchTerm] = useState('');
-  const [showAuthorDropdown, setShowAuthorDropdown] = useState(false);
+  const [showAddAuthorModal, setShowAddAuthorModal] = useState(false);
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newCategoryData, setNewCategoryData] = useState({ name: '' });
   const [coverImage, setCoverImage] = useState(null);
   const [bookFile, setBookFile] = useState(null);
   const [existingCoverImage, setExistingCoverImage] = useState(null);
   const [existingBookFile, setExistingBookFile] = useState(null);
+  const [tagInput, setTagInput] = useState('');
   const [errors, setErrors] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Update form data when book data is loaded
   useEffect(() => {
     if (bookData?.data?.book || bookData?.data) {
       const book = bookData.data.book || bookData.data;
+      
+      // Debug: Log the book data to see what's being received
+      console.log('Edit Book - Book data received:', book);
+      console.log('Edit Book - Tags from API:', book.tags);
+      console.log('Edit Book - Tags type:', typeof book.tags);
+      
+      // Ensure tags is always an array
+      let tagsArray = [];
+      if (book.tags) {
+        if (Array.isArray(book.tags)) {
+          tagsArray = book.tags;
+        } else if (typeof book.tags === 'string') {
+          try {
+            tagsArray = JSON.parse(book.tags);
+          } catch (e) {
+            console.warn('Failed to parse tags as JSON:', book.tags);
+            tagsArray = [];
+          }
+        }
+      }
       
       setFormData({
         title: book.title || '',
@@ -102,27 +138,23 @@ export default function EditBook() {
         format: book.format || 'pdf',
         price: book.price || '0.00',
         currency: book.currency || 'USD',
-        status: book.status || 'draft'
+        status: book.status || 'draft',
+        tags: tagsArray
       });
 
-      // Set authors from the API response
-      let authorsData = null;
+      // Set selected author IDs from the API response
+      let bookAuthorsData = null;
       if (bookData.data.authors && Array.isArray(bookData.data.authors)) {
-        authorsData = bookData.data.authors;
+        bookAuthorsData = bookData.data.authors;
       } else if (book.authors && Array.isArray(book.authors)) {
-        authorsData = book.authors;
+        bookAuthorsData = book.authors;
       }
       
-      if (authorsData) {
-        const mappedAuthors = authorsData.map(author => ({
-          id: author.id,
-          penName: author.penName || author.firstName || '',
-          bio: author.bio || '',
-          isNew: false
-        }));
-        setAuthors(mappedAuthors);
+      if (bookAuthorsData) {
+        const authorIds = bookAuthorsData.map(author => author.id).filter(id => id);
+        setSelectedAuthorIds(authorIds);
       } else {
-        setAuthors([]);
+        setSelectedAuthorIds([]);
       }
 
       // Set existing files
@@ -139,36 +171,14 @@ export default function EditBook() {
     }
   }, [bookData]);
 
-  // Update existing authors when fetched
-  useEffect(() => {
-    console.log('Fetched authors data:', fetchedAuthors);
-    console.log('Fetched authors data structure:', {
-      hasData: !!fetchedAuthors?.data,
-      hasAuthors: !!fetchedAuthors?.data?.authors,
-      isDataArray: Array.isArray(fetchedAuthors?.data),
-      isAuthorsArray: Array.isArray(fetchedAuthors?.data?.authors),
-      authorsLength: fetchedAuthors?.data?.authors?.length || 0
-    });
-    
-    if (fetchedAuthors?.data?.authors && Array.isArray(fetchedAuthors.data.authors)) {
-      console.log('Setting authors from fetchedAuthors.data.authors:', fetchedAuthors.data.authors.length);
-      setExistingAuthors(fetchedAuthors.data.authors);
-    } else if (fetchedAuthors?.data && Array.isArray(fetchedAuthors.data)) {
-      console.log('Setting authors from fetchedAuthors.data:', fetchedAuthors.data.length);
-      setExistingAuthors(fetchedAuthors.data);
-    } else if (fetchedAuthors && Array.isArray(fetchedAuthors)) {
-      console.log('Setting authors from fetchedAuthors:', fetchedAuthors.length);
-      setExistingAuthors(fetchedAuthors);
-    } else {
-      console.log('No valid authors data found');
-    }
-  }, [fetchedAuthors]);
 
   // Check for changes
   useEffect(() => {
     if (bookData?.data?.book || bookData?.data) {
       const book = bookData.data.book || bookData.data;
       const originalAuthors = bookData.data.authors || [];
+      const originalAuthorIds = originalAuthors.map(a => a.id).sort();
+      const currentAuthorIds = [...selectedAuthorIds].sort();
       
       const hasFormChanges = 
         formData.title !== (book.title || '') ||
@@ -183,13 +193,13 @@ export default function EditBook() {
         formData.price !== (book.price || '0.00') ||
         formData.currency !== (book.currency || 'USD') ||
         formData.status !== (book.status || 'draft') ||
-        JSON.stringify(authors) !== JSON.stringify(originalAuthors) ||
+        JSON.stringify(currentAuthorIds) !== JSON.stringify(originalAuthorIds) ||
         coverImage !== null ||
         bookFile !== null;
       
       setHasChanges(hasFormChanges);
     }
-  }, [formData, authors, coverImage, bookFile, bookData]);
+  }, [formData, selectedAuthorIds, coverImage, bookFile, bookData]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -218,58 +228,95 @@ export default function EditBook() {
     }
   };
 
-  // Author management functions
-  const handleAuthorChange = (index, field, value) => {
-    const newAuthors = [...authors];
-    newAuthors[index] = { ...newAuthors[index], [field]: value };
-    setAuthors(newAuthors);
+  // Handle author selection (toggle checkbox)
+  const handleAuthorToggle = (authorId) => {
+    setSelectedAuthorIds(prev =>
+      prev.includes(authorId)
+        ? prev.filter(id => id !== authorId)
+        : [...prev, authorId]
+    );
   };
 
-  const addAuthor = () => {
-    setAuthors([...authors, { 
-      id: null, // null means it's a new author
-      penName: '', 
-      bio: '', 
-      isNew: true 
-    }]);
-  };
-
-  const removeAuthor = (index) => {
-    if (authors.length > 1) {
-      const newAuthors = authors.filter((_, i) => i !== index);
-      setAuthors(newAuthors);
+  // Handle adding new author via modal
+  const handleAddNewAuthor = async (authorData) => {
+    try {
+      const formData = new FormData();
+      formData.append('penName', authorData.penName);
+      formData.append('bio', authorData.bio || '');
+      
+      const response = await handleAddAuthor(formData);
+      
+      if (response?.data?.author) {
+        // Add the new author to selected authors
+        setSelectedAuthorIds(prev => [...prev, response.data.author.id]);
+        // Refresh authors list
+        refetchAuthors();
+      }
+    } catch (error) {
+      console.error('Error creating author:', error);
     }
   };
 
-  const selectExistingAuthor = (author) => {
-    setAuthors([...authors, { 
-      ...author, 
-      id: author.id, 
-      isNew: false 
-    }]);
-    setShowAuthorDropdown(false);
-    setAuthorSearchTerm('');
+  // Handle category creation
+  const handleCategoryInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewCategoryData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const createNewAuthorInline = (index) => {
-    const newAuthors = [...authors];
-    newAuthors[index] = { 
-      ...newAuthors[index], 
-      isNew: true,
-      id: null 
-    };
-    setAuthors(newAuthors);
+  const handleCreateCategory = async () => {
+    if (!newCategoryData.name.trim()) {
+      return;
+    }
+
+    try {
+      const response = await handleAddCategory({
+        name: newCategoryData.name.trim()
+      });
+
+      if (response?.data) {
+        // Refresh categories list
+        refetchCategories();
+        // Close modal and reset form
+        setShowAddCategoryModal(false);
+        setNewCategoryData({ name: '' });
+        // Optionally set the newly created category as selected
+        if (response.data.category) {
+          setFormData(prev => ({
+            ...prev,
+            category: response.data.category.name
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error creating category:', error);
+      alert('Failed to create category. Please try again.');
+    }
   };
 
-  const filteredExistingAuthors = existingAuthors.filter(author => 
-    author.penName.toLowerCase().includes(authorSearchTerm.toLowerCase()) &&
-    !authors.some(selectedAuthor => selectedAuthor.id === author.id)
-  );
+  const handleTagInputChange = (e) => {
+    setTagInput(e.target.value);
+  };
 
-  // Debug existing authors
-  console.log('Existing authors for dropdown:', existingAuthors);
-  console.log('Filtered existing authors:', filteredExistingAuthors);
-  console.log('Author search term:', authorSearchTerm);
+  const addTag = () => {
+    const currentTags = Array.isArray(formData.tags) ? formData.tags : [];
+    if (tagInput.trim() && !currentTags.includes(tagInput.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        tags: [...currentTags, tagInput.trim()]
+      }));
+      setTagInput('');
+    }
+  };
+
+  const removeTag = (tagToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      tags: (Array.isArray(prev.tags) ? prev.tags : []).filter(tag => tag !== tagToRemove)
+    }));
+  };
 
   const validateForm = () => {
     const newErrors = {};
@@ -303,8 +350,8 @@ export default function EditBook() {
     }
 
     // Validate authors
-    if (authors.length === 0 || authors.some(author => !author.penName.trim())) {
-      newErrors.authors = 'At least one author with pen name is required';
+    if (selectedAuthorIds.length === 0) {
+      newErrors.authors = 'At least one author is required';
     }
 
     setErrors(newErrors);
@@ -318,33 +365,124 @@ export default function EditBook() {
       return;
     }
 
-    // Prepare form data for multipart upload
-    const formDataToSend = new FormData();
-    
-    // Add book data
-    Object.keys(formData).forEach(key => {
-      formDataToSend.append(key, formData[key]);
-    });
+    setIsUploading(true);
+    setUploadProgress(0);
 
-    // Add authors data - parse it properly for the backend
-    formDataToSend.append('authors', JSON.stringify(authors));
+    try {
+      // Use selected author IDs directly (all authors are existing)
+      const processedAuthors = selectedAuthorIds;
+      
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const uploadUrl = baseUrl.endsWith('/api') ? `${baseUrl}/upload` : `${baseUrl}/api/upload`;
+      
+      let uploadedBookFile = null;
+      
+      // Upload book file using chunked upload for better performance
+      if (bookFile) {
+        try {
+          console.log('Edit Book - Book file selected:', bookFile.name, bookFile.size);
+          
+          // Use chunked upload for files larger than 5MB
+          if (bookFile.size > 5 * 1024 * 1024) {
+            console.log('Edit Book - Using chunked upload for large file');
+            const uploadResult = await uploadFileInChunks(
+              bookFile,
+              uploadUrl,
+              { chunkSize: 1024 * 1024 }, // 1MB chunks
+              (progress) => {
+                setUploadProgress(Math.round(progress * 0.8)); // 80% for file upload
+              },
+              {
+                'Authorization': `Token ${localStorage.getItem('token')}`
+              }
+            );
+            
+            uploadedBookFile = uploadResult;
+            console.log('Edit Book - Chunked upload completed:', uploadResult);
+          } else {
+            console.log('Edit Book - Using regular upload for small file');
+            // For smaller files, we'll add directly to form data
+          }
+        } catch (uploadError) {
+          console.error('Edit Book - Book file upload failed:', uploadError);
+          throw new Error('Failed to upload book file. Please try again.');
+        }
+      }
 
-    // Add files
-    if (coverImage) {
-      formDataToSend.append('coverImage', coverImage);
+      // Prepare form data for multipart upload
+      const formDataToSend = new FormData();
+      
+      // Add book data
+      Object.keys(formData).forEach(key => {
+        if (key === 'tags') {
+          formDataToSend.append(key, JSON.stringify(formData[key]));
+        } else if (key === 'category') {
+          // Convert category name to categoryId
+          const selectedCategory = bookCategories.find(cat => cat.name === formData[key]);
+          if (selectedCategory) {
+            formDataToSend.append('categoryId', selectedCategory.id);
+          } else {
+            // Fallback: if category is already an ID (number), use it directly
+            formDataToSend.append('categoryId', formData[key]);
+          }
+        } else {
+          formDataToSend.append(key, formData[key]);
+        }
+      });
+
+      // Add authors data - use processed author IDs (including newly created ones)
+      formDataToSend.append('authors', JSON.stringify(processedAuthors));
+
+      // Add files
+      if (coverImage) {
+        setUploadProgress(90);
+        formDataToSend.append('coverImage', coverImage);
+      }
+      
+      // Add book file to form data
+      if (bookFile) {
+        setUploadProgress(85);
+        
+        // If we used chunked upload, send the result
+        if (uploadedBookFile) {
+          formDataToSend.append('uploadedBookFile', JSON.stringify(uploadedBookFile));
+        } else {
+          // For smaller files, add directly to form data
+          formDataToSend.append('bookFile', bookFile);
+        }
+      }
+
+      setUploadProgress(95);
+
+      // Debug: Log FormData contents
+      console.log('Edit Book - FormData contents:');
+      for (let [key, value] of formDataToSend.entries()) {
+        console.log(`${key}:`, value);
+      }
+
+      // Debug: Check API URL
+      const apiUrl = baseUrl.endsWith('/api') ? `${baseUrl}/books/${bookId}` : `${baseUrl}/api/books/${bookId}`;
+      console.log('Edit Book - API URL being used:', apiUrl);
+      console.log('Edit Book - Environment API URL:', process.env.NEXT_PUBLIC_API_URL);
+
+      // Send FormData directly (don't convert to object)
+      await handleUpdate(bookId, formDataToSend);
+      
+      setUploadProgress(100);
+      
+    } catch (error) {
+      console.error('Edit Book - Error:', error);
+      alert('Failed to update book. Please try again.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
-    if (bookFile) {
-      formDataToSend.append('bookFile', bookFile);
-    }
-
-    // Send FormData directly (don't convert to object)
-    handleUpdate(bookId, formDataToSend);
   };
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this book? This action cannot be undone.')) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         const apiUrl = baseUrl.endsWith('/api') 
           ? `${baseUrl}/books/${bookId}` 
           : `${baseUrl}/api/books/${bookId}`;
@@ -404,36 +542,31 @@ export default function EditBook() {
 
   return (
     <AdminLayout title="Edit Book">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
             <Link
               href="/admin/books"
-              className="inline-flex items-center text-gray-600 hover:text-gray-900"
+              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-2"
             >
-              <ArrowLeft className="w-5 h-5 mr-2" />
+              <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Books
             </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Edit Book</h1>
-              <p className="text-gray-600">Update book information and settings</p>
-            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Edit Book</h1>
           </div>
-          
-          {/* Delete Button */}
           <button
             onClick={handleDelete}
-            className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            className="inline-flex items-center px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm sm:text-base"
           >
-            <Trash2 className="w-5 h-5 mr-2" />
+            <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Delete Book
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             {/* Left Column - Basic Information */}
             <div className="space-y-6">
               <div>
@@ -470,11 +603,21 @@ export default function EditBook() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Category <span className="text-red-500">*</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Category <span className="text-red-500">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCategoryModal(true)}
+                          className="inline-flex items-center px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add Category
+                        </button>
+                      </div>
                       <select
                         name="category"
                         value={formData.category}
@@ -482,10 +625,11 @@ export default function EditBook() {
                         className={`w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
                           errors.category ? 'border-red-300' : 'border-gray-300'
                         }`}
+                        disabled={categoriesLoading}
                       >
                         <option value="">Select category</option>
-                        {categories.map(category => (
-                          <option key={category} value={category}>{category}</option>
+                        {bookCategories.map(category => (
+                          <option key={category.id} value={category.name}>{category.name}</option>
                         ))}
                       </select>
                       {errors.category && (
@@ -527,7 +671,7 @@ export default function EditBook() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Publication Year</label>
                       <input
@@ -587,7 +731,7 @@ export default function EditBook() {
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Technical Details</h3>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Format <span className="text-red-500">*</span>
@@ -626,7 +770,7 @@ export default function EditBook() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
                       <input
@@ -663,178 +807,159 @@ export default function EditBook() {
                 </div>
               </div>
 
-              {/* Authors */}
+              {/* Tags */}
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">Authors</h3>
-                  <div className="flex space-x-2">
-                    {/* Add Existing Author Button */}
-                    <div className="relative">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Tags</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+                    <div className="flex space-x-2 mb-2">
+                      <input
+                        type="text"
+                        value={tagInput}
+                        onChange={handleTagInputChange}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="Enter tag"
+                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                      />
                       <button
                         type="button"
-                        onClick={() => setShowAuthorDropdown(!showAuthorDropdown)}
-                        className="inline-flex items-center px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                        onClick={addTag}
+                        className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                       >
-                        <User className="w-4 h-4 mr-1" />
-                        Select Author
-                        <ChevronDown className="w-4 h-4 ml-1" />
+                        <Plus className="w-4 h-4" />
                       </button>
-                      
-                      {/* Author Selection Dropdown */}
-                      {showAuthorDropdown && (
-                        <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                          <div className="p-3 border-b border-gray-200">
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                              <input
-                                type="text"
-                                placeholder="Search authors..."
-                                value={authorSearchTerm}
-                                onChange={(e) => setAuthorSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                              />
-                            </div>
-                          </div>
-                          <div className="max-h-60 overflow-y-auto">
-                            {authorsLoading ? (
-                              <div className="p-4 text-center text-sm text-gray-500">
-                                Loading authors...
-                              </div>
-                            ) : filteredExistingAuthors.length === 0 ? (
-                              <div className="p-4 text-center text-sm text-gray-500">
-                                {authorSearchTerm ? 'No authors found' : 'No authors available'}
-                              </div>
-                            ) : (
-                              filteredExistingAuthors.map((author) => (
-                                <button
-                                  key={author.id}
-                                  type="button"
-                                  onClick={() => selectExistingAuthor(author)}
-                                  className="w-full p-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                                >
-                                  <div className="font-medium text-gray-900">{author.penName}</div>
-                                  {author.bio && (
-                                    <div className="text-sm text-gray-500 truncate">{author.bio}</div>
-                                  )}
-                                  <div className="text-xs text-gray-400 mt-1">
-                                    ID: {author.id}
-                                  </div>
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                    
-                    {/* Add New Author Button */}
-                    <button
-                      type="button"
-                      onClick={addAuthor}
-                      className="inline-flex items-center px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      New Author
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      {(Array.isArray(formData.tags) ? formData.tags : []).map((tag, index) => (
+                        <span
+                          key={`tag-${tag}-${index}`}
+                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => removeTag(tag)}
+                            className="ml-1 text-indigo-600 hover:text-indigo-800"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                
-                {errors.authors && (
-                  <p className="mb-2 text-sm text-red-600">{errors.authors}</p>
-                )}
-                
+              </div>
 
-                <div className="space-y-4">
-                  {authors.map((author, index) => (
-                    <div key={index} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-medium text-gray-900">Author {index + 1}</h4>
-                          {author.id && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Existing
-                            </span>
-                          )}
-                          {author.isNew && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              New
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {author.id && (
-                            <button
-                              type="button"
-                              onClick={() => createNewAuthorInline(index)}
-                              className="text-blue-600 hover:text-blue-700 text-sm"
-                            >
-                              Edit
-                            </button>
-                          )}
-                          {authors.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeAuthor(index)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Pen Name <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={author.penName}
-                            onChange={(e) => handleAuthorChange(index, 'penName', e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="Enter pen name"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                          <textarea
-                            value={author.bio}
-                            onChange={(e) => handleAuthorChange(index, 'bio', e.target.value)}
-                            rows={2}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="Enter author bio"
-                          />
-                        </div>
-                        
-                        {/* Show additional fields for new authors */}
-                        {author.isNew && (
-                          <div className="text-sm text-gray-500 italic">
-                            Additional author details can be added later from the Authors section.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+              {/* Authors Selection - Clean checkbox design like book create page */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    <User className="w-4 h-4 inline mr-1" />
+                    Authors
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAuthorModal(true)}
+                    className="inline-flex items-center px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Author
+                  </button>
                 </div>
-                
-                <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                  <div className="flex items-start space-x-2">
-                    <div className="flex-shrink-0 mt-0.5">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                    </div>
-                    <div className="text-sm text-blue-700">
-                      <p className="font-medium">Author Management Tips:</p>
-                      <ul className="mt-1 space-y-1 text-xs">
-                        <li>• <strong>Select Author:</strong> Choose from existing authors in your system</li>
-                        <li>• <strong>New Author:</strong> Create a new author profile inline</li>
-                        <li>• <strong>Edit:</strong> Modify existing author details if needed</li>
-                        <li>• New authors will be automatically created when you save the book</li>
-                      </ul>
-                    </div>
+
+                {/* Author Search */}
+                <div className="mb-3">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search authors..."
+                      value={authorSearchTerm}
+                      onChange={(e) => setAuthorSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
                   </div>
                 </div>
+
+                {/* Authors List with Checkboxes */}
+                <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+                  {authorsLoading ? (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mx-auto"></div>
+                      <p className="text-xs text-gray-500 mt-2">Loading authors...</p>
+                    </div>
+                  ) : authorsData?.data?.authors?.length > 0 ? (
+                    authorsData.data.authors
+                      .filter(author => 
+                        author.penName?.toLowerCase().includes(authorSearchTerm.toLowerCase()) ||
+                        author.bio?.toLowerCase().includes(authorSearchTerm.toLowerCase())
+                      )
+                      .map((author, index) => (
+                        <div key={`author-${author.id}-${index}`} className="flex items-start space-x-3 py-3 px-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
+                          <input
+                            type="checkbox"
+                            id={`author-${author.id}`}
+                            checked={selectedAuthorIds.includes(author.id)}
+                            onChange={() => handleAuthorToggle(author.id)}
+                            className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                          />
+                          <label
+                            htmlFor={`author-${author.id}`}
+                            className="flex-1 cursor-pointer"
+                          >
+                            <div className="text-sm font-medium text-gray-900">
+                              {author.penName}
+                            </div>
+                            <div className="text-xs text-gray-500 line-clamp-2">
+                              {author.bio}
+                            </div>
+                          </label>
+                        </div>
+                      ))
+                  ) : (
+                    <div className="text-center py-6">
+                      <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">No authors found</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Click "Add Author" to create a new author
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected Authors Summary */}
+                {selectedAuthorIds.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="text-xs font-medium text-gray-700 mb-2">
+                      Selected Authors ({selectedAuthorIds.length})
+                    </div>
+                    <div className="space-y-1">
+                      {selectedAuthorIds.map((authorId, index) => {
+                        const author = authorsData?.data?.authors?.find(a => a.id === authorId);
+                        return author ? (
+                          <div
+                            key={`selected-author-${authorId}-${index}`}
+                            className="flex items-center justify-between px-2 py-1 bg-indigo-50 rounded text-xs"
+                          >
+                            <span className="text-indigo-700">{author.penName}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleAuthorToggle(authorId)}
+                              className="text-indigo-500 hover:text-indigo-700"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {errors.authors && (
+                  <p className="mt-2 text-sm text-red-600">{errors.authors}</p>
+                )}
               </div>
             </div>
 
@@ -844,9 +969,6 @@ export default function EditBook() {
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-3">Current Book Information</h4>
                 <div className="space-y-2 text-sm text-gray-600">
-                  <p><strong>Downloads:</strong> {bookData?.data?.book?.downloadCount || 0}</p>
-                  <p><strong>Rating:</strong> {bookData?.data?.book?.rating || 0}/5</p>
-                  <p><strong>Views:</strong> {bookData?.data?.book?.viewCount || 0}</p>
                   <p><strong>Created:</strong> {bookData?.data?.book?.createdAt ? new Date(bookData.data.book.createdAt).toLocaleDateString() : 'Unknown'}</p>
                   <p><strong>File Size:</strong> {bookData?.data?.book?.fileSize ? `${(bookData.data.book.fileSize / 1024 / 1024).toFixed(2)} MB` : 'Not uploaded'}</p>
                 </div>
@@ -874,7 +996,7 @@ export default function EditBook() {
                     <div className="space-y-4">
                       <div className="mx-auto w-32 h-40 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
                         <img 
-                          src={`${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}/uploads/images/${existingCoverImage.split('/').pop()}`}
+                          src={`${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL}/uploads/images/${existingCoverImage.split('/').pop()}`}
                           alt="Current cover"
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -889,7 +1011,7 @@ export default function EditBook() {
                       <p className="text-sm text-gray-600">Current cover image</p>
                       <div className="flex space-x-2 justify-center">
                         <a
-                          href={`${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}/uploads/images/${existingCoverImage.split('/').pop()}`}
+                          href={`${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL}/uploads/images/${existingCoverImage.split('/').pop()}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-blue-600 hover:text-blue-700"
@@ -961,7 +1083,7 @@ export default function EditBook() {
                       </p>
                       <div className="flex space-x-2 justify-center">
                         <a
-                          href={`${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}/uploads/books/${existingBookFile.path.split('/').pop()}`}
+                          href={`${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL}/uploads/books/${existingBookFile.path.split('/').pop()}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-blue-600 hover:text-blue-700"
@@ -1001,18 +1123,6 @@ export default function EditBook() {
                 </div>
               </div>
 
-              {/* Preview */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-2">Preview</h4>
-                <div className="space-y-2 text-sm text-gray-600">
-                  <p><strong>Title:</strong> {formData.title || 'Not set'}</p>
-                  <p><strong>Category:</strong> {formData.category || 'Not set'}</p>
-                  <p><strong>Language:</strong> {formData.language || 'Not set'}</p>
-                  <p><strong>Format:</strong> {formData.format || 'Not set'}</p>
-                  <p><strong>Status:</strong> {formData.status || 'Not set'}</p>
-                  <p><strong>Authors:</strong> {authors.length} ({authors.map(a => a.penName).join(', ')})</p>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -1024,26 +1134,47 @@ export default function EditBook() {
           )}
 
           {/* Form Actions */}
-          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-gray-200">
             <div className="text-sm text-gray-500">
               {hasChanges && (
                 <span className="text-orange-600">You have unsaved changes</span>
               )}
             </div>
+
+            {/* Upload Progress */}
+            {isUploading && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-700">Uploading files...</span>
+                  <span className="text-sm text-blue-600">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
             
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Link
                 href="/admin/books"
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors text-center"
               >
                 Cancel
               </Link>
               <button
                 type="submit"
-                disabled={isSubmitting || !hasChanges}
-                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                disabled={isSubmitting || isUploading || !hasChanges}
+                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isSubmitting ? (
+                {isUploading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Uploading... ({uploadProgress}%)
+                  </>
+                ) : isSubmitting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                     Updating...
@@ -1058,8 +1189,157 @@ export default function EditBook() {
             </div>
           </div>
         </form>
+
+        {/* Add Category Modal */}
+        {showAddCategoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Add New Category</h3>
+                <button
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Category Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={newCategoryData.name}
+                    onChange={handleCategoryInputChange}
+                    placeholder="Enter category name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+                <button
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  disabled={createCategoryLoading || !newCategoryData.name.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center"
+                >
+                  {createCategoryLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Create Category
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Author Modal - Professional Design */}
+        {showAddAuthorModal && (
+          <AddAuthorModal
+            onClose={() => setShowAddAuthorModal(false)}
+            onAuthorCreated={handleAddNewAuthor}
+          />
+        )}
       </div>
     </AdminLayout>
+  );
+}
+
+// Add Author Modal Component (separate for clean design)
+function AddAuthorModal({ onClose, onAuthorCreated }) {
+  const [authorData, setAuthorData] = useState({
+    penName: '',
+    bio: ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!authorData.penName.trim()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onAuthorCreated(authorData);
+      onClose();
+    } catch (error) {
+      console.error('Error creating author:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Add New Author</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="p-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pen Name *
+              </label>
+              <input
+                type="text"
+                value={authorData.penName}
+                onChange={(e) => setAuthorData({ ...authorData, penName: e.target.value })}
+                placeholder="Enter author pen name"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Bio
+              </label>
+              <textarea
+                value={authorData.bio}
+                onChange={(e) => setAuthorData({ ...authorData, bio: e.target.value })}
+                placeholder="Enter author bio (optional)"
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !authorData.penName.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center"
+            >
+              {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Create Author
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

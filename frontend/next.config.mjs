@@ -9,7 +9,61 @@ const nextConfig = {
     },
   },
   images: {
-    domains: ['localhost', 'localhost:5000', 'vercel.app', 'images.unsplash.com', 'img.youtube.com','127.0.0.1'],
+    // Use remotePatterns for better security and flexibility
+    remotePatterns: [
+      // Local development domains
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '5000',
+        pathname: '/**',
+      },
+      {
+        protocol: 'http',
+        hostname: '127.0.0.1',
+        port: '',
+        pathname: '/**',
+      },
+      // Production API domain (from environment variable)
+      {
+        protocol: 'https',
+        hostname: process.env.NEXT_PUBLIC_API_DOMAIN || 'api.saqibeduhub.com',
+        port: '',
+        pathname: '/**',
+      },
+      // Production frontend domain (from environment variable)
+      {
+        protocol: 'https',
+        hostname: process.env.NEXT_PUBLIC_DOMAIN || 'saqibeduhub.com',
+        port: '',
+        pathname: '/**',
+      },
+      // External image sources
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.youtube.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'vercel.app',
+        port: '',
+        pathname: '/**',
+      },
+    ],
   },
   eslint: {
     // Warning: This allows production builds to successfully complete even if

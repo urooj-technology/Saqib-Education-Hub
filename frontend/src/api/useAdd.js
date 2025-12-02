@@ -37,30 +37,19 @@ const useAdd = (
 
       // Add Authorization header only if the token is valid
       if (token && typeof token === "string" && token.trim().length > 0) {
-        headers.Authorization = `Bearer ${token.trim()}`;
+        headers.Authorization = `Token ${token.trim()}`;
       }
 
       try {
-        // Debug: Check environment variable
-        console.log('Environment variable NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+        // Get API URL from environment variable
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         
-        // Special handling for authentication endpoints
-        let apiUrl;
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com/api';
+        // Construct API URL
+        const apiUrl = baseUrl.endsWith('/api') 
+          ? `${baseUrl}/${queryKey}` 
+          : `${baseUrl}/api/${queryKey}`;
         
-        if (queryKey === "auth/login") {
-          // For auth/login, use the correct endpoint structure
-          apiUrl = baseUrl.endsWith('/api') 
-            ? `${baseUrl}/${queryKey}` 
-            : `${baseUrl}/api/${queryKey}`;
-        } else {
-          // For other endpoints, construct the proper URL
-          apiUrl = baseUrl.endsWith('/api') 
-            ? `${baseUrl}/${queryKey}` 
-            : `${baseUrl}/api/${queryKey}`;
-        }
-        
-        console.log('Final API URL:', apiUrl);
+        console.log('API URL:', apiUrl);
         
         const response = await axios.post(apiUrl, data, { headers });
         setResponseData(response.data);
@@ -80,7 +69,18 @@ const useAdd = (
       setLoading(false);
       console.log("useAdd onSuccess called with data:", data);
       
-      // Remove automatic toast - let component handle it
+      // Show success toast message
+      if (successMessage) {
+        toast.success(successMessage, {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+      }
+      
       setSuccess(true);
       console.log("Mutation successful:", data);
 
@@ -100,7 +100,17 @@ const useAdd = (
       setLoading(false);
       setError(error);
 
-      // Remove automatic toast - let component handle it
+      // Show error toast message
+      const errorMsg = error.response?.data?.message || error.response?.data?.detail || errorMessage || "An error occurred";
+      toast.error(errorMsg, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+
       console.error("useAdd onError:", error);
     },
   });

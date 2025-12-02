@@ -5,6 +5,7 @@ const {
   getJobById,
   createJob,
   updateJob,
+  toggleJobStatus,
   deleteJob,
   getFeaturedJobs,
   getJobsByCategory,
@@ -31,20 +32,23 @@ router.get('/featured', getFeaturedJobs);
 router.get('/category/:category', getJobsByCategory);
 router.get('/province/:provinceId', getJobsByProvince);
 router.get('/search', searchJobs);
+router.get('/my-jobs', protect, authorize('admin', 'hr'), getMyJobs); // Protected route for user's own jobs
+router.get('/:id', getJobById); // Job details - public route
 router.post('/:id/view', incrementJobView);
+router.get('/:id/similar', getSimilarJobs);
 
 // Protected routes - Admin/HR only
 router.use(protect);
 router.use(authorize('admin', 'hr'));
-
-// GET /api/jobs/my-jobs - Get user's own jobs (must be before /:id route)
-router.get('/my-jobs', getMyJobs);
 
 // POST /api/jobs - Create new job
 router.post('/', upload.single('companyLogo'), validateJob, createJob);
 
 // PUT /api/jobs/:id - Update job
 router.put('/:id', upload.single('companyLogo'), validateJobUpdate, updateJob);
+
+// PATCH /api/jobs/:id/toggle-status - Toggle job status
+router.patch('/:id/toggle-status', toggleJobStatus);
 
 // DELETE /api/jobs/:id - Delete job
 router.delete('/:id', deleteJob);
@@ -67,11 +71,5 @@ router.post('/check-expired', checkAndUpdateExpiredJobs);
 
 // PUT /api/jobs/:id/feature - Toggle job featured status
 router.put('/:id/feature', toggleJobFeatured);
-
-// Public job details route (moved to end to avoid conflicts with specific routes)
-router.get('/:id', getJobById);
-
-// Public routes (moved after protected routes to avoid conflicts)
-router.get('/:id/similar', getSimilarJobs);
 
 module.exports = router;

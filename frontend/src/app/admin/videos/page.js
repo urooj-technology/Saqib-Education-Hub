@@ -19,124 +19,12 @@ import {
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
-import AdminLayout from '../../../components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout';
 import Link from 'next/link';
-import useFetchObjects from '../../../api/useFetchObjects';
-import { useAuth } from '../../../context/AuthContext';
+import useFetchObjects from '@/api/useFetchObjects';
+import { useAuth } from '@/context/AuthContext';
+import useDelete from '@/api/useDelete';
 
-// Mock data for videos
-const mockVideos = [
-  {
-    id: 1,
-    title: 'Introduction to Machine Learning',
-    author: 'Dr. Sarah Johnson',
-    category: 'Computer Science',
-    status: 'published',
-    uploadDate: '2024-01-15',
-    lastModified: '2024-01-20',
-    duration: '45:30',
-    views: 12500,
-    likes: 890,
-    comments: 156,
-    thumbnail: '/api/placeholder/300/200',
-    videoUrl: '/api/videos/ml-intro.mp4',
-    description: 'A comprehensive introduction to machine learning concepts, algorithms, and applications for beginners.',
-    tags: 'machine learning, AI, algorithms, beginner, computer science',
-    quality: '1080p',
-    size: '2.5 GB',
-    language: 'English',
-    subtitles: true,
-    featured: true
-  },
-  {
-    id: 2,
-    title: 'Advanced Calculus: Integration Techniques',
-    author: 'Prof. Ahmed Khan',
-    category: 'Mathematics',
-    status: 'published',
-    uploadDate: '2024-01-10',
-    lastModified: '2024-01-10',
-    duration: '1:15:45',
-    views: 8900,
-    likes: 567,
-    comments: 89,
-    thumbnail: '/api/placeholder/300/200',
-    videoUrl: '/api/videos/calculus-integration.mp4',
-    description: 'Deep dive into advanced integration techniques including substitution, parts, and trigonometric methods.',
-    tags: 'calculus, integration, mathematics, advanced, techniques',
-    quality: '720p',
-    size: '1.8 GB',
-    language: 'English',
-    subtitles: false,
-    featured: false
-  },
-  {
-    id: 3,
-    title: 'Physics Lab: Wave Properties',
-    author: 'Dr. Michael Chen',
-    category: 'Physics',
-    status: 'draft',
-    uploadDate: '2024-01-18',
-    lastModified: '2024-01-18',
-    duration: '32:15',
-    views: 0,
-    likes: 0,
-    comments: 0,
-    thumbnail: '/api/placeholder/300/200',
-    videoUrl: '/api/videos/physics-waves.mp4',
-    description: 'Hands-on laboratory demonstration of wave properties including frequency, amplitude, and interference.',
-    tags: 'physics, waves, laboratory, hands-on, demonstration',
-    quality: '1080p',
-    size: '3.2 GB',
-    language: 'English',
-    subtitles: true,
-    featured: false
-  },
-  {
-    id: 4,
-    title: 'Creative Writing Workshop',
-    author: 'Prof. Fatima Al-Zahra',
-    category: 'Literature',
-    status: 'published',
-    uploadDate: '2024-01-05',
-    lastModified: '2024-01-05',
-    duration: '58:20',
-    views: 6700,
-    likes: 423,
-    comments: 67,
-    thumbnail: '/api/placeholder/300/200',
-    videoUrl: '/api/videos/creative-writing.mp4',
-    description: 'Interactive workshop on creative writing techniques, character development, and storytelling.',
-    tags: 'creative writing, workshop, literature, storytelling, character development',
-    quality: '720p',
-    size: '1.5 GB',
-    language: 'English',
-    subtitles: true,
-    featured: false
-  },
-  {
-    id: 5,
-    title: 'Chemistry: Organic Compounds',
-    author: 'Dr. David Wilson',
-    category: 'Chemistry',
-    status: 'archived',
-    uploadDate: '2023-12-01',
-    lastModified: '2023-12-01',
-    duration: '42:10',
-    views: 4500,
-    likes: 234,
-    comments: 45,
-    thumbnail: '/api/placeholder/300/200',
-    videoUrl: '/api/videos/chemistry-organic.mp4',
-    description: 'Comprehensive overview of organic compounds, their structures, and chemical properties.',
-    tags: 'chemistry, organic compounds, chemical properties, structures',
-    quality: '720p',
-    size: '2.1 GB',
-    language: 'English',
-    subtitles: false,
-    featured: false
-  }
-];
 
 const categories = ['All', 'Computer Science', 'Mathematics', 'Physics', 'Chemistry', 'Literature', 'History', 'Biology', 'Economics', 'Psychology', 'Education Technology', 'Language Learning', 'Art & Design', 'Music', 'Sports', 'Health & Wellness', 'Business', 'Engineering', 'Medicine', 'Law', 'Other'];
 const statuses = ['All', 'published', 'draft', 'archived', 'pending_review'];
@@ -145,38 +33,54 @@ export default function VideosList() {
   const { token } = useAuth();
   const [filteredVideos, setFilteredVideos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // Fetch videos from API
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: fetchedVideos,
     isLoading: loading,
     isError: error,
     refetch
   } = useFetchObjects(
-    ["videos", searchTerm, selectedCategory, selectedStatus],
-    `videos/?search=${searchTerm}&category=${selectedCategory !== 'All' ? selectedCategory : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}`,
+    ["videos", debouncedSearchTerm, selectedCategory, selectedStatus],
+    `videos/?search=${encodeURIComponent(debouncedSearchTerm)}&category=${selectedCategory !== 'All' ? selectedCategory : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}`,
     token
   );
 
-  const videos = fetchedVideos?.data?.videos || mockVideos;
+
+  // Use the useDelete hook for clean delete functionality
+  const { handleDelete, ConfirmDialog } = useDelete('videos', token);
+
+  const videos = fetchedVideos?.data?.videos || [];
 
   useEffect(() => {
     setFilteredVideos(videos);
   }, [videos]);
 
-  const handleDelete = (videoId) => {
-    if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
-      // TODO: Implement delete API call
-      console.log('Delete video:', videoId);
-    }
+  // Handle delete with refetch after successful deletion
+  const handleDeleteVideo = (videoId) => {
+    handleDelete(videoId);
+    // The useDelete hook will handle the API call and show confirmation
+    // The hook should automatically invalidate the query and trigger a refetch
   };
 
   const toggleActive = async (videoId) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}/api/videos/${videoId}/toggle-active`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL}/api/videos/${videoId}/toggle-active`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -477,10 +381,10 @@ export default function VideosList() {
                           >
                             <Edit className="w-4 h-4" />
                           </Link>
-                          <button
-                            onClick={() => handleDelete(video.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
+                            <button
+                              onClick={() => handleDeleteVideo(video.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -516,6 +420,9 @@ export default function VideosList() {
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

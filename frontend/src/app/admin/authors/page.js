@@ -10,34 +10,54 @@ import {
   Eye,
   Filter
 } from 'lucide-react';
-import AdminLayout from '../../../components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout';
 import Link from 'next/link';
-import { useAuth } from '../../../context/AuthContext';
-import useFetchObjects from '../../../api/useFetchObjects';
-import { getAuthorProfileUrl } from '../../../utils/imageUtils';
+import { useAuth } from '@/context/AuthContext';
+import useFetchObjects from '@/api/useFetchObjects';
+import useDelete from '@/api/useDelete';
+import { getAuthorProfileUrl } from '@/utils/imageUtils';
 
 export default function AuthorsPage() {
   const [page, setPage] = useState(0);
   const [rowPerPage, setRowPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('DESC');
   const [showFilters, setShowFilters] = useState(false);
   
   const auth = useAuth();
   const token = auth.token;
+
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(0);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
   
   // Fetch authors from backend with pagination, search, and sorting
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: authors,
     isLoading: loading,
     isError: error,
     refetch
   } = useFetchObjects(
-    ["authors", searchTerm, sortBy, sortOrder, page, rowPerPage],
-    `authors/?search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
+    ["authors", debouncedSearchTerm, sortBy, sortOrder, page, rowPerPage],
+    `authors/?search=${encodeURIComponent(debouncedSearchTerm)}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
     token
   );
+
+  // Delete functionality
+  const { handleDelete, ConfirmDialog } = useDelete("authors", token);
   
   console.log('Authors page - Data:', authors);
   console.log('Authors page - Data type:', typeof authors);
@@ -218,10 +238,7 @@ export default function AuthorsPage() {
                           </Link>
                           <button
                             className="text-red-600 hover:text-red-900 p-1"
-                            onClick={() => {
-                              // TODO: Implement delete functionality
-                              console.log('Delete author:', author.id);
-                            }}
+                            onClick={() => handleDelete(author.id)}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -306,10 +323,7 @@ export default function AuthorsPage() {
                             </Link>
                             <button
                               className="text-red-600 hover:text-red-900"
-                              onClick={() => {
-                                // TODO: Implement delete functionality
-                                console.log('Delete author:', author.id);
-                              }}
+                              onClick={() => handleDelete(author.id)}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -440,6 +454,9 @@ export default function AuthorsPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog message="Are you sure you want to delete this author? This action cannot be undone." />
     </AdminLayout>
   );
 }

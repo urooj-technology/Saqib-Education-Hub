@@ -1,9 +1,10 @@
 const Book = require('../models/Book');
-const { Op, sequelize } = require('sequelize');
+const { Op, sequelize, col, fn } = require('sequelize');
 const { sequelize: db } = require('../config/database');
 const { Author, BookAuthor } = require('../models');
 const logger = require('../config/logger');
 const { createError } = require('../utils/errorHandler');
+const { compressImage } = require('../middleware/upload');
 const fs = require('fs');
 const path = require('path');
 
@@ -42,7 +43,17 @@ const getAllBooks = async (req, res, next) => {
     }
     
     if (category) {
-      whereClause.category = category;
+      // If category is a string (category name), find the category ID
+      if (isNaN(category)) {
+        const BookCategory = require('../models/BookCategory');
+        const categoryRecord = await BookCategory.findOne({ where: { name: category } });
+        if (categoryRecord) {
+          whereClause.categoryId = categoryRecord.id;
+        }
+      } else {
+        // If category is a number (category ID), use it directly
+        whereClause.categoryId = parseInt(category);
+      }
     }
     
     if (language) {
@@ -93,58 +104,117 @@ const getAllBooks = async (req, res, next) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const limitNum = parseInt(limit);
 
-    // Execute query with pagination (simplified for now)
+    // Execute query with pagination and include category information
+    const BookCategory = require('../models/BookCategory');
     const { count, rows: books } = await Book.findAndCountAll({
       where: whereClause,
+      include: [{
+        model: BookCategory,
+        as: 'category',
+        attributes: ['id', 'name'],
+        required: false // Left join to include books without categories
+      }],
       order: [[sortBy, sortOrder.toUpperCase()]],
       limit: limitNum,
       offset: offset
     });
 
-    // Transform books data and fetch authors using Sequelize ORM
-    const transformedBooks = await Promise.all(books.map(async (book) => {
+    // PERFORMANCE: Fetch all book authors in one query (fixes N+1 problem)
+    const bookIds = books.map(b => b.id);
+    const allBookAuthors = await BookAuthor.findAll({
+      where: { 
+        bookId: { [Op.in]: bookIds },
+        isActive: true 
+      },
+      include: [{
+        model: Author,
+        include: [{
+          model: require('../models/User'),
+          as: 'user',
+          attributes: ['id', 'firstName', 'email']
+        }]
+      }]
+    });
+
+    // Group authors by bookId for efficient lookup
+    const authorsByBook = allBookAuthors.reduce((acc, ba) => {
+      if (!acc[ba.bookId]) acc[ba.bookId] = [];
+      acc[ba.bookId].push(ba);
+      return acc;
+    }, {});
+
+    // Transform books data (no async operations needed - much faster!)
+    const transformedBooks = books.map((book) => {
       const bookData = book.toJSON();
+      
+      // Add category name if available
+      logger.debug('Book category data:', bookData.category, 'CategoryId:', bookData.categoryId);
+      
+      if (bookData.category && bookData.category.name) {
+        bookData.categoryName = bookData.category.name;
+        bookData.category = bookData.category.name;
+      } else if (bookData.categoryId) {
+        // Category should be included in the main query
+        bookData.categoryName = 'Uncategorized';
+        bookData.category = 'Uncategorized';
+      } else {
+        bookData.categoryName = 'Uncategorized';
+        bookData.category = 'Uncategorized';
+      }
+      
+      // Ensure tags are properly parsed as an array
+      if (bookData.tags && typeof bookData.tags === 'string') {
+        try {
+          bookData.tags = JSON.parse(bookData.tags);
+        } catch (parseError) {
+          logger.warn('Backend - Failed to parse tags JSON in getAllBooks:', parseError);
+          bookData.tags = [];
+        }
+      } else if (!bookData.tags) {
+        bookData.tags = [];
+      }
       
       // Add file URLs
       if (bookData.filePath) {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+        const baseUrl = `${protocol}://${req.get('host')}`;
         bookData.fileUrl = `${baseUrl}/api/books/${book.id}/pdf`;
-        bookData.downloadUrl = `${baseUrl}/api/books/${book.id}/pdf`;
       }
       
       if (bookData.coverImage) {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+        const baseUrl = `${protocol}://${req.get('host')}`;
         const relativePath = bookData.coverImage.replace(path.join(__dirname, '..'), '');
         bookData.coverImageUrl = `${baseUrl}${relativePath.replace(/\\/g, '/')}`;
       }
       
-      // Fetch authors for this book using Sequelize ORM
-      const bookAuthors = await BookAuthor.findAll({
-        where: { bookId: book.id, isActive: true },
-        include: [{
-          model: Author,
-          include: [{
-            model: require('../models/User'),
-            as: 'user',
-            attributes: ['id', 'firstName', 'email']
-          }]
-        }]
-      });
+      // Get pre-fetched authors for this book (fast lookup from Map)
+      const bookAuthors = authorsByBook[book.id] || [];
       
       bookData.authors = bookAuthors.map(ba => {
         const author = ba.Author;
         const user = author.user;
+        
+        // Convert profile image to full URL
+        let profileImageUrl = null;
+        if (author.profileImage) {
+          const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+          const baseUrl = `${protocol}://${req.get('host')}`;
+          profileImageUrl = `${baseUrl}/uploads/images/${author.profileImage}`;
+        }
+        
         return {
           id: user.id,
           firstName: user.firstName,
           email: user.email,
           penName: author.penName,
-          bio: author.bio
+          bio: author.bio,
+          profileImage: profileImageUrl
         };
       });
       
       return bookData;
-    }));
+    });
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(count / limitNum);
@@ -201,18 +271,38 @@ const getFeaturedBooks = async (req, res, next) => {
     const { limit = 6 } = req.query;
     const limitNum = parseInt(limit);
 
+    const BookCategory = require('../models/BookCategory');
     const books = await Book.findAll({
       where: {
         status: 'published',
         featured: true
       },
+      include: [{
+        model: BookCategory,
+        as: 'category',
+        attributes: ['id', 'name'],
+        required: false
+      }],
       order: [['rating', 'DESC'], ['createdAt', 'DESC']],
       limit: limitNum
     });
 
+    // Transform books to include category names
+    const transformedBooks = books.map(book => {
+      const bookData = book.toJSON();
+      if (bookData.category && bookData.category.name) {
+        bookData.categoryName = bookData.category.name;
+        bookData.category = bookData.category.name;
+      } else {
+        bookData.categoryName = 'Uncategorized';
+        bookData.category = 'Uncategorized';
+      }
+      return bookData;
+    });
+
     res.status(200).json({
       status: 'success',
-      data: { books }
+      data: { books: transformedBooks }
     });
 
   } catch (error) {
@@ -230,7 +320,15 @@ const getBookById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const book = await Book.findByPk(id);
+    const BookCategory = require('../models/BookCategory');
+    const book = await Book.findByPk(id, {
+      include: [{
+        model: BookCategory,
+        as: 'category',
+        attributes: ['id', 'name'],
+        required: false
+      }]
+    });
 
     if (!book) {
       return next(createError(404, 'Book not found'));
@@ -241,15 +339,58 @@ const getBookById = async (req, res, next) => {
     // Transform book data and fetch authors using Sequelize ORM
     const bookData = book.toJSON();
     
+    // Add category name
+    if (bookData.category && bookData.category.name) {
+      bookData.categoryName = bookData.category.name;
+      bookData.category = bookData.category.name;
+    } else if (bookData.categoryId) {
+      try {
+        const category = await BookCategory.findByPk(bookData.categoryId);
+        if (category) {
+          bookData.categoryName = category.name;
+          bookData.category = category.name;
+        } else {
+          bookData.categoryName = 'Uncategorized';
+          bookData.category = 'Uncategorized';
+        }
+      } catch (err) {
+        logger.error('Error fetching book category:', err);
+        bookData.categoryName = 'Uncategorized';
+        bookData.category = 'Uncategorized';
+      }
+    } else {
+      bookData.categoryName = 'Uncategorized';
+      bookData.category = 'Uncategorized';
+    }
+    
+    // Debug: Log the book data to see if tags are included
+    logger.debug('Backend - Book data from database:', bookData);
+    logger.debug('Backend - Tags field:', bookData.tags);
+    logger.debug('Backend - Tags type:', typeof bookData.tags);
+    
+    // Ensure tags are properly parsed as an array
+    if (bookData.tags && typeof bookData.tags === 'string') {
+      try {
+        bookData.tags = JSON.parse(bookData.tags);
+        console.log('Backend - Parsed tags:', bookData.tags);
+      } catch (parseError) {
+        console.warn('Backend - Failed to parse tags JSON:', parseError);
+        bookData.tags = [];
+      }
+    } else if (!bookData.tags) {
+      bookData.tags = [];
+    }
+    
     // Add file URLs
     if (bookData.filePath) {
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+      const baseUrl = `${protocol}://${req.get('host')}`;
       bookData.fileUrl = `${baseUrl}/api/books/${book.id}/pdf`;
-      bookData.downloadUrl = `${baseUrl}/api/books/${book.id}/pdf`;
     }
     
     if (bookData.coverImage) {
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+      const baseUrl = `${protocol}://${req.get('host')}`;
       const relativePath = bookData.coverImage.replace(path.join(__dirname, '..'), '');
       bookData.coverImageUrl = `${baseUrl}${relativePath.replace(/\\/g, '/')}`;
     }
@@ -270,12 +411,22 @@ const getBookById = async (req, res, next) => {
     bookData.authors = bookAuthors.map(ba => {
       const author = ba.Author;
       const user = author.user;
+      
+      // Convert profile image to full URL
+      let profileImageUrl = null;
+      if (author.profileImage) {
+        const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+        const baseUrl = `${protocol}://${req.get('host')}`;
+        profileImageUrl = `${baseUrl}/uploads/images/${author.profileImage}`;
+      }
+      
       return {
         id: user.id,
         firstName: user.firstName,
         email: user.email,
         penName: author.penName,
-        bio: author.bio
+        bio: author.bio,
+        profileImage: profileImageUrl
       };
     });
 
@@ -305,7 +456,7 @@ const createBook = async (req, res, next) => {
       edition,
       pages,
       language,
-      category,
+      categoryId,
       format,
       price,
       currency,
@@ -321,14 +472,46 @@ const createBook = async (req, res, next) => {
     let bookFilePath = null;
     let fileSize = null;
 
+    // Check if book file was uploaded via chunked upload
+    const uploadedBookFile = req.body.uploadedBookFile;
+    if (uploadedBookFile) {
+      try {
+        const parsedUpload = typeof uploadedBookFile === 'string' ? JSON.parse(uploadedBookFile) : uploadedBookFile;
+        bookFilePath = parsedUpload.filePath;
+        fileSize = parsedUpload.fileSize;
+        logger.info(`Using chunked upload result: ${parsedUpload.fileName}`);
+      } catch (error) {
+        logger.error('Error parsing uploaded book file data:', error);
+        return next(createError(400, 'Invalid uploaded book file data'));
+      }
+    }
+
     if (req.files) {
-      // Handle cover image
+      // Handle cover image with compression
       if (req.files.coverImage && req.files.coverImage[0]) {
-        coverImagePath = req.files.coverImage[0].path;
+        const file = req.files.coverImage[0];
+        // Compress cover image
+        try {
+          // Don't await - let compression run in background
+          compressImage(file.path, {
+            maxWidth: 800,
+            maxHeight: 800,
+            quality: 75,
+            format: 'jpeg',
+            progressive: true
+          }).then(() => {
+            logger.info(`Compressed cover image: ${file.originalname}`);
+          }).catch(err => {
+            logger.warn('Image compression failed:', err.message);
+          });
+        } catch (error) {
+          logger.error(`Failed to compress cover image: ${error.message}`);
+        }
+        coverImagePath = file.path;
       }
 
-      // Handle book file
-      if (req.files.bookFile && req.files.bookFile[0]) {
+      // Handle regular book file upload (fallback)
+      if (req.files.bookFile && req.files.bookFile[0] && !bookFilePath) {
         bookFilePath = req.files.bookFile[0].path;
         fileSize = req.files.bookFile[0].size;
       }
@@ -363,42 +546,52 @@ const createBook = async (req, res, next) => {
       edition,
       pages: pages ? parseInt(pages) : null,
       language,
-      category,
+      categoryId,
       format,
       fileSize,
       filePath: bookFilePath,
       coverImage: coverImagePath,
       price: price ? parseFloat(price) : 0.00,
       currency: currency || 'USD',
-      status: status || 'draft'
+      status: status || 'draft',
+      tags: parsedTags
     });
 
-    // Handle authors creation through BookAuthor model
+    // Handle authors creation through BookAuthor model (async, non-blocking)
     if (parsedAuthors.length > 0) {
-      try {
-        // Create BookAuthor associations
-        const bookAuthorPromises = parsedAuthors.map(authorData => {
-          return BookAuthor.create({
-            bookId: book.id,
-            authorId: authorData.id,
-            isActive: true
-          });
+      // Create BookAuthor associations in background
+      const bookAuthorPromises = parsedAuthors.map(authorId => {
+        return BookAuthor.create({
+          bookId: book.id,
+          authorId: authorId,
+          isActive: true
         });
-        
-        await Promise.all(bookAuthorPromises);
-        logger.info(`Book ${book.title} has ${parsedAuthors.length} authors: ${parsedAuthors.map(a => a.penName).join(', ')}`);
-      } catch (authorError) {
+      });
+      
+      Promise.all(bookAuthorPromises).then(() => {
+        logger.info(`Book ${book.title} has ${parsedAuthors.length} authors with IDs: ${parsedAuthors.join(', ')}`);
+      }).catch(authorError => {
         logger.error('Error creating book-author associations:', authorError);
-        // Don't fail the book creation if author association fails
-      }
+      });
     }
 
-    logger.info(`New book created: ${book.title} by ${req.user.email}`);
+    // Return minimal response immediately
+    const bookData = {
+      id: book.id,
+      title: book.title,
+      status: book.status,
+      category: book.category,
+      coverImage: coverImagePath,
+      filePath: bookFilePath,
+      price: book.price,
+      currency: book.currency,
+      createdAt: book.createdAt
+    };
 
     res.status(201).json({
       status: 'success',
       message: 'Book created successfully',
-      data: { book }
+      data: { book: bookData }
     });
 
   } catch (error) {
@@ -433,21 +626,48 @@ const updateBook = async (req, res, next) => {
     }
 
     // Process uploaded files
+    let bookFilePath = null;
+    let fileSize = null;
+
+    // Check if book file was uploaded via chunked upload
+    const uploadedBookFile = req.body.uploadedBookFile;
+    if (uploadedBookFile) {
+      try {
+        const parsedUpload = typeof uploadedBookFile === 'string' ? JSON.parse(uploadedBookFile) : uploadedBookFile;
+        bookFilePath = parsedUpload.filePath;
+        fileSize = parsedUpload.fileSize;
+        logger.info(`Using chunked upload result for update: ${parsedUpload.fileName}`);
+      } catch (error) {
+        logger.error('Error parsing uploaded book file data in update:', error);
+        return next(createError(400, 'Invalid uploaded book file data'));
+      }
+    }
+
     if (req.files) {
       // Handle cover image
       if (req.files.coverImage && req.files.coverImage[0]) {
         updateData.coverImage = req.files.coverImage[0].path;
       }
 
-      // Handle book file
-      if (req.files.bookFile && req.files.bookFile[0]) {
-        updateData.filePath = req.files.bookFile[0].path;
-        updateData.fileSize = req.files.bookFile[0].size;
+      // Handle regular book file upload (fallback)
+      if (req.files.bookFile && req.files.bookFile[0] && !bookFilePath) {
+        bookFilePath = req.files.bookFile[0].path;
+        fileSize = req.files.bookFile[0].size;
       }
     }
 
-    // Parse authors if they are JSON strings
+    // Add file path and size to update data if we have them
+    if (bookFilePath) {
+      updateData.filePath = bookFilePath;
+    }
+    if (fileSize) {
+      updateData.fileSize = fileSize;
+    }
+
+    // Parse authors and tags if they are JSON strings
     let parsedAuthors = [];
+    let parsedTags = [];
+    
     if (updateData.authors) {
       try {
         parsedAuthors = typeof updateData.authors === 'string' 
@@ -458,9 +678,26 @@ const updateBook = async (req, res, next) => {
         parsedAuthors = [];
       }
     }
+    
+    if (updateData.tags) {
+      try {
+        parsedTags = typeof updateData.tags === 'string' 
+          ? JSON.parse(updateData.tags) 
+          : updateData.tags;
+      } catch (parseError) {
+        logger.warn('Error parsing tags JSON:', parseError);
+        parsedTags = [];
+      }
+    }
 
-    // Update book (excluding authors from the main update)
-    const { authors, ...bookUpdateData } = updateData;
+    // Update book (excluding authors and tags from the main update)
+    const { authors, tags, ...bookUpdateData } = updateData;
+    
+    // Add parsed tags to update data
+    if (parsedTags.length > 0) {
+      bookUpdateData.tags = parsedTags;
+    }
+    
     await book.update(bookUpdateData);
 
     // Handle author associations if authors were provided
@@ -473,16 +710,16 @@ const updateBook = async (req, res, next) => {
         
         // Create new author associations
         if (parsedAuthors.length > 0) {
-          const bookAuthorPromises = parsedAuthors.map(authorData => {
+          const bookAuthorPromises = parsedAuthors.map(authorId => {
             return BookAuthor.create({
               bookId: book.id,
-              authorId: authorData.id,
+              authorId: authorId,
               isActive: true
             });
           });
           
           await Promise.all(bookAuthorPromises);
-          logger.info(`Updated book ${book.title} with ${parsedAuthors.length} authors`);
+          logger.info(`Updated book ${book.title} with ${parsedAuthors.length} authors with IDs: ${parsedAuthors.join(', ')}`);
         }
       } catch (authorError) {
         logger.error('Error updating book-author associations:', authorError);
@@ -686,8 +923,8 @@ const getBookStats = async (req, res, next) => {
         'category',
         'status',
         'format',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-        [sequelize.fn('AVG', sequelize.col('rating')), 'avgRating'],
+        [fn('COUNT', col('id')), 'count'],
+        [fn('AVG', col('rating')), 'avgRating'],
       ],
       group: ['category', 'status', 'format']
     });
@@ -735,29 +972,53 @@ const streamBookPDF = async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', fileSize);
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Range, Content-Length, Accept-Ranges');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+    res.setHeader('ETag', `"${stat.mtime.getTime()}-${fileSize}"`); // Add ETag for better caching
 
     // Handle range requests for chunked loading
     const range = req.headers.range;
     if (range) {
       const parts = range.replace(/bytes=/, "").split("-");
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 1024 * 1024, fileSize - 1); // Default 1MB chunks
       const chunkSize = (end - start) + 1;
 
       res.status(206);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
       res.setHeader('Content-Length', chunkSize);
 
-      const stream = fs.createReadStream(filePath, { start, end });
+      const stream = fs.createReadStream(filePath, { 
+        start, 
+        end,
+        highWaterMark: 64 * 1024 // 64KB buffer for better performance
+      });
+      
+      stream.on('error', (error) => {
+        logger.error('Error streaming PDF chunk:', error);
+        if (!res.headersSent) {
+          next(createError(500, 'Error streaming PDF'));
+        }
+      });
+      
       stream.pipe(res);
     } else {
-      // If no range request, stream the entire file
-      const stream = fs.createReadStream(filePath);
+      // If no range request, stream the entire file with chunked transfer
+      res.setHeader('Transfer-Encoding', 'chunked');
+      const stream = fs.createReadStream(filePath, {
+        highWaterMark: 64 * 1024 // 64KB buffer
+      });
+      
+      stream.on('error', (error) => {
+        logger.error('Error streaming PDF:', error);
+        if (!res.headersSent) {
+          next(createError(500, 'Error streaming PDF'));
+        }
+      });
+      
       stream.pipe(res);
     }
 

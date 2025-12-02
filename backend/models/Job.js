@@ -40,11 +40,12 @@ const Job = sequelize.define('Job', {
       key: 'id'
     }
   },
-  category: {
-    type: DataTypes.STRING(100),
+  categoryId: {
+    type: DataTypes.INTEGER,
     allowNull: false,
-    validate: {
-      notEmpty: true
+    references: {
+      model: 'job_categories',
+      key: 'id'
     }
   },
   type: {
@@ -106,7 +107,8 @@ const Job = sequelize.define('Job', {
   },
   deadline: {
     type: DataTypes.DATE,
-    allowNull: true
+    allowNull: true,
+    field: 'deadline'
   },
   viewCount: {
     type: DataTypes.INTEGER,
@@ -184,9 +186,6 @@ const Job = sequelize.define('Job', {
       fields: ['company_id']
     },
     {
-      fields: ['category']
-    },
-    {
       fields: ['type']
     },
     {
@@ -216,10 +215,10 @@ Job.prototype.incrementApplication = async function() {
 };
 
 // Class methods
-Job.findByCategory = function(category) {
+Job.findByCategory = function(categoryId) {
   return this.findAll({ 
     where: { 
-      category, 
+      categoryId, 
       status: 'active' 
     },
     order: [['createdAt', 'DESC']]

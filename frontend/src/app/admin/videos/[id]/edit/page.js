@@ -181,7 +181,7 @@ export default function EditVideo() {
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
         const apiUrl = baseUrl.endsWith('/api') 
           ? `${baseUrl}/videos/${videoId}` 
           : `${baseUrl}/api/videos/${videoId}`;
@@ -189,7 +189,7 @@ export default function EditVideo() {
         const response = await fetch(apiUrl, {
           method: 'DELETE',
           headers: {
-            'Authorization': `Token ${token}`
+            'Authorization': `Bearer ${token}`
           }
         });
 
@@ -197,11 +197,12 @@ export default function EditVideo() {
           alert('Video deleted successfully!');
           router.push('/admin/videos');
         } else {
-          throw new Error('Failed to delete video');
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to delete video');
         }
       } catch (error) {
         console.error('Error deleting video:', error);
-        alert('Error deleting video. Please try again.');
+        alert('Error deleting video: ' + error.message);
       }
     }
   };

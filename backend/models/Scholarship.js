@@ -1,53 +1,7 @@
-const { DataTypes, Model } = require('sequelize');
+const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 
-class Scholarship extends Model {
-  // Instance methods
-  async incrementView() {
-    this.viewCount += 1;
-    await this.save();
-  }
-
-  async incrementApplication() {
-    this.applicationCount += 1;
-    await this.save();
-  }
-
-  // Class methods
-  static async findByCategory(category, options = {}) {
-    const { limit = 12, offset = 0, sortBy = 'createdAt', sortOrder = 'DESC' } = options;
-    
-    return this.findAndCountAll({
-      where: { category, status: 'active', isActive: true },
-      order: [[sortBy, sortOrder.toUpperCase()]],
-      limit,
-      offset
-    });
-  }
-
-  static async search(query, options = {}) {
-    const { limit = 12, offset = 0 } = options;
-    const { Op } = require('sequelize');
-    
-    return this.findAndCountAll({
-      where: {
-        [Op.or]: [
-          { title: { [Op.like]: `%${query}%` } },
-          { description: { [Op.like]: `%${query}%` } },
-          { organization: { [Op.like]: `%${query}%` } },
-          { requirements: { [Op.like]: `%${query}%` } }
-        ],
-        status: 'active',
-        isActive: true
-      },
-      order: [['createdAt', 'DESC'], ['viewCount', 'DESC']],
-      limit,
-      offset
-    });
-  }
-}
-
-Scholarship.init({
+const Scholarship = sequelize.define('Scholarship', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -56,219 +10,120 @@ Scholarship.init({
   },
   title: {
     type: DataTypes.STRING(255),
-    allowNull: false,
-    validate: {
-      notEmpty: { msg: 'Title is required' },
-      len: { args: [3, 255], msg: 'Title must be between 3 and 255 characters' }
-    }
+    allowNull: true,
+ 
   },
   description: {
     type: DataTypes.TEXT,
-    allowNull: false,
-    validate: {
-      notEmpty: { msg: 'Description is required' },
-      len: { args: [10, 5000], msg: 'Description must be between 10 and 5000 characters' }
-    }
+    allowNull: true
   },
   organization: {
     type: DataTypes.STRING(255),
-    allowNull: false,
-    validate: {
-      notEmpty: { msg: 'Organization is required' }
-    }
-  },
-  authorId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: 'users',
-      key: 'id'
-    },
-    onUpdate: 'CASCADE',
-    onDelete: 'CASCADE'
-  },
-  category: {
-    type: DataTypes.ENUM(
-      'academic',
-      'athletic',
-      'arts',
-      'community_service',
-      'leadership',
-      'minority',
-      'need_based',
-      'merit_based',
-      'research',
-      'study_abroad',
-      'graduate',
-      'undergraduate',
-      'other'
-    ),
-    allowNull: false,
-    defaultValue: 'academic'
-  },
-  type: {
-    type: DataTypes.ENUM(
-      'full_tuition',
-      'partial_tuition',
-      'room_board',
-      'books_supplies',
-      'travel',
-      'stipend',
-      'fellowship',
-      'grant',
-      'loan',
-      'other'
-    ),
-    allowNull: false,
-    defaultValue: 'partial_tuition'
-  },
-  level: {
-    type: DataTypes.ENUM(
-      'high_school',
-      'undergraduate',
-      'graduate',
-      'phd',
-      'postdoc',
-      'professional',
-      'other'
-    ),
-    allowNull: false,
-    defaultValue: 'undergraduate'
-  },
-  country: {
-    type: DataTypes.STRING(100),
-    allowNull: false,
-    validate: {
-      notEmpty: { msg: 'Country is required' }
-    }
+    allowNull: true,
+   
   },
   amount: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
-    validate: {
-      min: { args: [0], msg: 'Amount cannot be negative' }
-    }
+   
   },
   currency: {
     type: DataTypes.STRING(3),
-    allowNull: false,
-    defaultValue: 'USD',
-    validate: {
-      len: { args: [3, 3], msg: 'Currency must be 3 characters' }
-    }
+    allowNull: true,
+    defaultValue: 'USD'
+  },
+  category: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: 'full_tuition'
+  },
+  level: {
+    type: DataTypes.STRING(100),
+    allowNull: true
   },
   requirements: {
-    type: DataTypes.JSON,
-    allowNull: false,
-    defaultValue: []
+    type: DataTypes.TEXT,
+    allowNull: true
   },
   benefits: {
     type: DataTypes.JSON,
-    allowNull: false,
+    allowNull: true,
     defaultValue: []
   },
-  status: {
-    type: DataTypes.ENUM('active', 'inactive', 'expired', 'draft'),
-    allowNull: false,
-    defaultValue: 'active'
-  },
-  deadline: {
+  applicationDeadline: {
     type: DataTypes.DATE,
     allowNull: true,
-    validate: {
-      isDate: { msg: 'Deadline must be a valid date' },
-      isFuture(value) {
-        if (value && new Date(value) <= new Date()) {
-          throw new Error('Deadline must be in the future');
-        }
-      }
-    }
+    field: 'application_deadline'
   },
-  logo: {
-    type: DataTypes.STRING(500),
+  country: {
+    type: DataTypes.STRING(100),
     allowNull: true
-  },
-  applicationCount: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 0,
-    validate: {
-      min: { args: [0], msg: 'Application count cannot be negative' }
-    }
-  },
-  viewCount: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 0,
-    validate: {
-      min: { args: [0], msg: 'View count cannot be negative' }
-    }
   },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
+    field: 'is_active'
+  },
+  status: {
+    type: DataTypes.ENUM('draft', 'active', 'inactive', 'expired'),
+    defaultValue: 'draft',
+    allowNull: false
+  },
+  authorId: {
+    type: DataTypes.INTEGER,
     allowNull: false,
-    field: 'isActive'
+    field: 'author_id',
+    references: {
+      model: 'users',
+      key: 'id'
+    }
+  },
+  featured: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 }, {
-  sequelize,
-  modelName: 'Scholarship',
   tableName: 'scholarships',
   timestamps: true,
-  paranoid: true, // Soft deletes
   indexes: [
     {
-      name: 'idx_scholarship_title',
       fields: ['title']
     },
     {
-      name: 'idx_scholarship_category',
+      fields: ['organization']
+    },
+    {
       fields: ['category']
     },
     {
-      name: 'idx_scholarship_type',
-      fields: ['type']
+      fields: ['status', 'is_active']
     },
     {
-      name: 'idx_scholarship_level',
-      fields: ['level']
-    },
-    {
-      name: 'idx_scholarship_country',
-      fields: ['country']
-    },
-    {
-      name: 'idx_scholarship_status',
-      fields: ['status']
-    },
-    {
-      name: 'idx_scholarship_deadline',
-      fields: ['deadline']
-    },
-    {
-      name: 'idx_scholarship_author',
       fields: ['author_id']
     },
     {
-      name: 'idx_scholarship_created',
-      fields: ['created_at']
+      fields: ['application_deadline']
     },
     {
-      name: 'idx_scholarship_is_active',
-      fields: ['isActive']
+      fields: ['featured']
+    },
+    {
+      fields: ['amount']
+    },
+    {
+      fields: ['country']
+    },
+    {
+      fields: ['created_at']
     }
   ],
   hooks: {
-    beforeSave: (scholarship) => {
-      // Ensure requirements and benefits are arrays
-      if (typeof scholarship.requirements === 'string') {
-        try {
-          scholarship.requirements = JSON.parse(scholarship.requirements);
-        } catch (e) {
-          scholarship.requirements = [];
-        }
-      }
-      
+    beforeCreate: (scholarship) => {
+      // Parse JSON fields if they are strings
       if (typeof scholarship.benefits === 'string') {
         try {
           scholarship.benefits = JSON.parse(scholarship.benefits);
@@ -276,8 +131,94 @@ Scholarship.init({
           scholarship.benefits = [];
         }
       }
+    },
+    beforeUpdate: (scholarship) => {
+      // Parse JSON fields if they are strings
+      if (typeof scholarship.benefits === 'string') {
+        try {
+          scholarship.benefits = JSON.parse(scholarship.benefits);
+        } catch (e) {
+          scholarship.benefits = [];
+        }
+      }
+    },
+    afterFind: (scholarships) => {
+      // Parse JSON fields for all found scholarships
+      const parseScholarships = (scholarship) => {
+        if (typeof scholarship.benefits === 'string') {
+          try {
+            scholarship.benefits = JSON.parse(scholarship.benefits);
+          } catch (e) {
+            scholarship.benefits = [];
+          }
+        }
+      };
+
+      if (Array.isArray(scholarships)) {
+        scholarships.forEach(parseScholarships);
+      } else if (scholarships) {
+        parseScholarships(scholarships);
+      }
     }
   }
 });
+
+// Instance methods - removed viewCount and applicationCount methods since those fields were removed
+
+// Class methods
+Scholarship.findByCategory = async function(category, options = {}) {
+  const { limit = 12, offset = 0, sortBy = 'createdAt', sortOrder = 'DESC' } = options;
+  
+  return this.findAndCountAll({
+    where: { category, status: 'active', isActive: true },
+    order: [[sortBy, sortOrder.toUpperCase()]],
+    limit,
+    offset
+  });
+};
+
+Scholarship.search = async function(query, options = {}) {
+  const { limit = 12, offset = 0 } = options;
+  const { Op } = require('sequelize');
+  
+  return this.findAndCountAll({
+    where: {
+      [Op.or]: [
+        { title: { [Op.like]: `%${query}%` } },
+        { description: { [Op.like]: `%${query}%` } },
+        { organization: { [Op.like]: `%${query}%` } },
+        { requirements: { [Op.like]: `%${query}%` } }
+      ],
+      status: 'active',
+      isActive: true
+    },
+    order: [['createdAt', 'DESC']],
+    limit,
+    offset
+  });
+};
+
+Scholarship.getFeatured = async function(limit = 6) {
+  return this.findAll({
+    where: { 
+      featured: true, 
+      status: 'active', 
+      isActive: true 
+    },
+    order: [['createdAt', 'DESC']],
+    limit
+  });
+};
+
+Scholarship.getByStatus = async function(status, options = {}) {
+  const { limit = 12, offset = 0 } = options;
+  
+  return this.findAndCountAll({
+    where: { status, isActive: true },
+    order: [['createdAt', 'DESC']],
+    limit,
+    offset
+  });
+};
 
 module.exports = Scholarship;

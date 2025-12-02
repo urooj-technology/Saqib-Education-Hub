@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, BookOpen, Briefcase, GraduationCap, FileText, Video, Search, Users, Award, Star, Clock, MapPin, TrendingUp, Globe, Shield, Zap, DollarSign, Building, Calendar, Bookmark, FileText as FileIcon } from 'lucide-react';
-import Layout from '../components/Layout';
-import useFetchObjects from '../api/useFetchObjects';
+import Layout from '@/components/Layout';
+import useFetchObjects from '@/api/useFetchObjects';
 
 // Import translations
 import enTranslations from '../locales/en.json';
@@ -22,6 +22,9 @@ export default function Home() {
   const [currentLang, setCurrentLang] = useState('en');
   const [currentTranslations, setCurrentTranslations] = useState(translations.en);
   const [activeFilter, setActiveFilter] = useState('latest');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     const savedLang = localStorage.getItem('language') || 'en';
@@ -29,10 +32,50 @@ export default function Home() {
     setCurrentTranslations(translations[savedLang] || translations.en);
   }, []);
 
-  // Fetch all jobs for the home page
-  const { data: jobsResponse, isLoading: jobsLoading, isError: jobsError } = useFetchObjects(
-    ['all-jobs'],
-    'jobs/?sortBy=newest&page=1&limit=50',
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setCurrentPage(1);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
+  // Build API query parameters based on current state
+  const buildJobsQuery = () => {
+    const params = new URLSearchParams();
+    params.append('page', currentPage.toString());
+    params.append('limit', '12');
+    
+    // Add search parameter (use debounced search term)
+    if (debouncedSearchTerm) {
+      params.append('search', debouncedSearchTerm);
+    }
+    
+    // Add filter parameters based on activeFilter
+    if (activeFilter === 'female') {
+      params.append('gender', 'female');
+    } else if (activeFilter === 'expiring') {
+      // For expiring jobs, we might need a special endpoint or date filtering
+      // For now, we'll use the existing endpoint and handle it in the backend
+      params.append('expiring', 'today');
+    }
+    
+    // Add sorting
+    params.append('sortBy', 'newest');
+    
+    return `jobs/?${params.toString()}`;
+  };
+
+  // Fetch jobs with current search and filter parameters
+  const { data: jobsResponse, isLoading: jobsLoading, isError: jobsError, refetch: refetchJobs } = useFetchObjects(
+    ['home-jobs', currentPage, debouncedSearchTerm, activeFilter],
+    buildJobsQuery(),
     null // No token needed for public access
   );
 
@@ -55,14 +98,24 @@ export default function Home() {
     null
   );
 
+  // Extract jobs and pagination from API response
   const allJobs = jobsResponse?.data?.jobs || [];
+  const pagination = jobsResponse?.data?.pagination || {};
   
-  // Extract real statistics
+  // Static fallback data for when API fails
+  const staticStats = {
+    books: 0,
+    jobs: 0,
+    scholarships: 0,
+    articles: 0,
+  };
+
+  // Extract real statistics with fallback to static data
   const realStats = {
-    books: booksResponse?.data?.pagination?.totalItems || 0,
-    jobs: jobsResponse?.data?.pagination?.totalItems || 0,
-    scholarships: scholarshipsResponse?.data?.pagination?.totalItems || 0,
-    articles: articlesResponse?.data?.pagination?.totalItems || 0,
+    books: booksResponse?.data?.pagination?.totalItems || staticStats.books,
+    jobs: jobsResponse?.data?.pagination?.totalItems || staticStats.jobs,
+    scholarships: scholarshipsResponse?.data?.pagination?.totalItems || staticStats.scholarships,
+    articles: articlesResponse?.data?.pagination?.totalItems || staticStats.articles,
   };
 
   // Debug: Log articles API response
@@ -70,17 +123,8 @@ export default function Home() {
   console.log('Articles pagination:', articlesResponse?.data?.pagination);
   console.log('Real Stats Articles:', realStats.articles);
   
-  // Filter jobs based on active filter
-  const filteredJobs = allJobs.filter(job => {
-    if (activeFilter === 'female') {
-      return job.gender === 'female' || job.gender === 'any';
-    } else if (activeFilter === 'expiring') {
-      const today = new Date();
-      const deadline = new Date(job.deadline || job.closingDate);
-      return deadline.toDateString() === today.toDateString();
-    }
-    return true;
-  });
+  // Jobs are already filtered by the backend, so we use them directly
+  const filteredJobs = allJobs;
 
   // Format numbers with proper formatting
   const formatNumber = (num) => {
@@ -88,6 +132,21 @@ export default function Home() {
       return `${(num / 1000).toFixed(0)}K+`;
     }
     return num.toString();
+  };
+
+  // Handle search and filter changes
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    setCurrentPage(1); // Reset to first page when searching
+  };
+
+  const handleFilterChange = (filter) => {
+    setActiveFilter(filter);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
   };
 
   const features = [
@@ -189,6 +248,12 @@ export default function Home() {
 
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {jobsLoading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 text-white overflow-hidden">
         <div className="absolute inset-0 bg-black opacity-20"></div>
@@ -196,13 +261,13 @@ export default function Home() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-20">
           <div className="text-center">
             <div className="mb-6">
-              <div className="inline-flex items-center px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium mb-4">
+              {/* <div className="inline-flex items-center px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium mb-4">
                 <Star className="w-4 h-4 mr-2 text-yellow-400" />
                 Trusted by 50,000+ users worldwide
-              </div>
+              </div> */}
             </div>
             <h1 className="text-3xl md:text-5xl font-bold mb-4 leading-tight">
-              {currentTranslations['home.hero.title'] || 'Welcome to Noor Saqib Education Hub'}
+              {currentTranslations['home.hero.title'] || 'Welcome to Saqib Education Hub'}
             </h1>
             <p className="text-lg md:text-xl mb-6 text-indigo-100 max-w-3xl mx-auto leading-relaxed">
               {currentTranslations['home.hero.subtitle'] || 'Your gateway to knowledge, opportunities, and growth'}
@@ -249,15 +314,20 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Search Bar */}
           <div className="text-center mb-12">
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-2xl mx-auto px-4">
               <div className="relative">
                 <input
                   type="text"
                   placeholder="Search for jobs"
-                  className="w-full px-6 py-4 pr-32 text-lg border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-lg"
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full px-4 sm:px-6 py-3 sm:py-4 pr-24 sm:pr-32 text-base sm:text-lg border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-lg"
                 />
-                <button className="absolute right-2 top-2 bg-indigo-600 text-white px-8 py-2 rounded-full hover:bg-indigo-700 transition-colors">
-                  Search
+                <button 
+                  onClick={() => handleSearchChange('')}
+                  className="absolute right-1 sm:right-2 top-1 sm:top-2 bg-indigo-600 text-white px-4 sm:px-8 py-2 rounded-full hover:bg-indigo-700 transition-colors text-sm sm:text-base"
+                >
+                  {searchTerm ? 'Clear' : 'Search'}
                 </button>
               </div>
             </div>
@@ -266,14 +336,14 @@ export default function Home() {
 
           {/* All Jobs */}
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-gray-900">
-                All Jobs ({filteredJobs.length})
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
+                All Jobs ({pagination.totalItems || filteredJobs.length})
               </h3>
-              <div className="flex space-x-2">
+              <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveFilter('latest')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  onClick={() => handleFilterChange('latest')}
+                  className={`px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-medium transition-colors ${
                     activeFilter === 'latest' 
                       ? 'bg-gray-200 text-gray-900' 
                       : 'bg-white text-gray-600 hover:bg-gray-50'
@@ -282,8 +352,8 @@ export default function Home() {
                   Latest Jobs
                 </button>
                 <button
-                  onClick={() => setActiveFilter('female')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  onClick={() => handleFilterChange('female')}
+                  className={`px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-medium transition-colors ${
                     activeFilter === 'female' 
                       ? 'bg-gray-200 text-gray-900' 
                       : 'bg-white text-gray-600 hover:bg-gray-50'
@@ -292,8 +362,8 @@ export default function Home() {
                   Female Only
                 </button>
                 <button
-                  onClick={() => setActiveFilter('expiring')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  onClick={() => handleFilterChange('expiring')}
+                  className={`px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-medium transition-colors ${
                     activeFilter === 'expiring' 
                       ? 'bg-gray-200 text-gray-900' 
                       : 'bg-white text-gray-600 hover:bg-gray-50'
@@ -372,7 +442,7 @@ export default function Home() {
                             </div>
                             <div className="flex items-center">
                               <Calendar className="w-3 h-3 mr-1" />
-                              <span>{job.deadline ? new Date(job.deadline).toLocaleDateString('en-US', { 
+                              <span>{job.closing_date ? new Date(job.closing_date).toLocaleDateString('en-US', { 
                                 month: 'short', 
                                 day: 'numeric', 
                                 year: 'numeric' 
@@ -407,6 +477,56 @@ export default function Home() {
                     </div>
                   </Link>
                 ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {pagination.totalPages > 1 && (
+              <div className="flex justify-center items-center space-x-2 mt-8">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={!pagination.hasPrevPage}
+                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex space-x-1">
+                  {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (pagination.totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= pagination.totalPages - 2) {
+                      pageNum = pagination.totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-2 text-sm font-medium rounded-md ${
+                          currentPage === pageNum
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={!pagination.hasNextPage}
+                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
               </div>
             )}
 

@@ -8,7 +8,7 @@ const useSubscription = () => {
   // Get token from localStorage
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
   const apiUrl = baseUrl.endsWith('/api') 
     ? `${baseUrl}/subscriptions` 
     : `${baseUrl}/api/subscriptions`;
@@ -159,7 +159,7 @@ export const useAdminSubscription = () => {
   // Get token from localStorage
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
   const apiUrl = baseUrl.endsWith('/api') 
     ? `${baseUrl}/subscriptions/admin` 
     : `${baseUrl}/api/subscriptions/admin`;

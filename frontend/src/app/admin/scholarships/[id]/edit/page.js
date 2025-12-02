@@ -3,19 +3,16 @@
 import { useState, useEffect } from 'react';
 import { 
   Save, 
+  X, 
   Upload, 
   GraduationCap,
   ArrowLeft,
-  Trash2,
-  AlertCircle,
   Plus,
-  X,
   Building,
   DollarSign,
   FileText,
   Award,
-  CheckCircle,
-  Info
+  AlertCircle
 } from 'lucide-react';
 import AdminLayout from '../../../../../components/AdminLayout';
 import Link from 'next/link';
@@ -24,7 +21,7 @@ import useFetchObject from '../../../../../api/useFetchObject';
 import useUpdate from '../../../../../api/useUpdate';
 import { useAuth } from '../../../../../context/AuthContext';
 
-// Scholarship categories based on backend model
+// Scholarship categories
 const categories = [
   'academic',
   'athletic', 
@@ -41,30 +38,17 @@ const categories = [
   'other'
 ];
 
-// Scholarship types based on backend model
+// Scholarship types (must match backend ENUM values)
 const types = [
   'full_tuition',
   'partial_tuition',
-  'room_board',
-  'books_supplies',
-  'travel',
   'stipend',
-  'fellowship',
   'grant',
-  'loan',
-  'other'
+  'fellowship'
 ];
 
-// Education levels based on backend model
-const levels = [
-  'high_school',
-  'undergraduate',
-  'graduate',
-  'phd',
-  'postdoc',
-  'professional',
-  'other'
-];
+// Education level examples (now free text field)
+const levelExamples = 'e.g., Undergraduate, Graduate, Masters, PhD, Certificate, Diploma, etc.';
 
 // Common countries
 const countries = [
@@ -126,7 +110,7 @@ export default function EditScholarship() {
 
   const [requirements, setRequirements] = useState([]);
   const [benefits, setBenefits] = useState([]);
-  const [logo, setLogo] = useState(null);
+  // Logo field removed - no longer supported
   const [requirementInput, setRequirementInput] = useState('');
   const [benefitInput, setBenefitInput] = useState('');
 
@@ -149,12 +133,17 @@ export default function EditScholarship() {
         amount: scholarship.amount || '',
         currency: scholarship.currency || 'USD',
         status: scholarship.status || 'active',
-        deadline: scholarship.deadline || ''
+        deadline: scholarship.deadline ? new Date(scholarship.deadline).toISOString().slice(0, 16) : ''
       });
       
       // Set requirements and benefits arrays
-      if (scholarship.requirements && Array.isArray(scholarship.requirements)) {
-        setRequirements(scholarship.requirements);
+      if (scholarship.requirements) {
+        if (Array.isArray(scholarship.requirements)) {
+          setRequirements(scholarship.requirements);
+        } else if (typeof scholarship.requirements === 'string') {
+          // Split comma-separated string into array
+          setRequirements(scholarship.requirements.split(',').map(req => req.trim()).filter(req => req));
+        }
       }
       if (scholarship.benefits && Array.isArray(scholarship.benefits)) {
         setBenefits(scholarship.benefits);
@@ -178,11 +167,11 @@ export default function EditScholarship() {
         formData.currency !== (scholarship.currency || 'USD') ||
         formData.status !== (scholarship.status || 'active') ||
         formData.deadline !== (scholarship.deadline || '') ||
-        logo !== null;
+        false; // Logo field removed
       
       setHasChanges(hasFormChanges);
     }
-  }, [formData, scholarshipData, logo]);
+  }, [formData, scholarshipData]); // Logo dependency removed
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -200,12 +189,7 @@ export default function EditScholarship() {
     }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setLogo(file);
-    }
-  };
+  // Logo file handling removed - no longer supported
 
   const addRequirement = () => {
     if (requirementInput.trim() && !requirements.includes(requirementInput.trim())) {
@@ -266,36 +250,12 @@ export default function EditScholarship() {
       newErrors.organization = 'Organization is required';
     }
 
-    if (!formData.category) {
-      newErrors.category = 'Category is required';
-    }
-
-    if (!formData.type) {
-      newErrors.type = 'Type is required';
-    }
-
-    if (!formData.level) {
-      newErrors.level = 'Level is required';
-    }
-
-    if (!formData.country) {
-      newErrors.country = 'Country is required';
-    }
-
     if (formData.amount && (isNaN(formData.amount) || parseFloat(formData.amount) < 0)) {
       newErrors.amount = 'Amount must be a valid positive number';
     }
 
     if (formData.deadline && new Date(formData.deadline) <= new Date()) {
       newErrors.deadline = 'Deadline must be in the future';
-    }
-
-    if (requirements.length === 0) {
-      newErrors.requirements = 'At least one requirement is required';
-    }
-
-    if (benefits.length === 0) {
-      newErrors.benefits = 'At least one benefit is required';
     }
 
     setErrors(newErrors);
@@ -317,46 +277,16 @@ export default function EditScholarship() {
       updateData.append(key, formData[key]);
     });
 
-    // Add requirements and benefits as JSON strings
-    updateData.append('requirements', JSON.stringify(requirements));
+    // Add requirements as string and benefits as JSON string
+    updateData.append('requirements', requirements.join(', '));
     updateData.append('benefits', JSON.stringify(benefits));
 
-    // Add logo file if selected
-    if (logo) {
-      updateData.append('logo', logo);
-    }
+    // Logo upload removed - no longer supported
 
     // Send FormData directly (don't convert to object)
     handleUpdate(scholarshipId, updateData);
   };
 
-  const handleDelete = async () => {
-    if (confirm('Are you sure you want to delete this scholarship? This action cannot be undone.')) {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
-        const apiUrl = baseUrl.endsWith('/api') 
-          ? `${baseUrl}/scholarships/${scholarshipId}` 
-          : `${baseUrl}/api/scholarships/${scholarshipId}`;
-
-        const response = await fetch(apiUrl, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Token ${token}`
-          }
-        });
-
-        if (response.ok) {
-          alert('Scholarship deleted successfully!');
-          router.push('/admin/scholarships');
-        } else {
-          throw new Error('Failed to delete scholarship');
-        }
-      } catch (error) {
-        console.error('Error deleting scholarship:', error);
-        alert('Error deleting scholarship. Please try again.');
-      }
-    }
-  };
 
   if (isLoading) {
     return (
@@ -393,46 +323,36 @@ export default function EditScholarship() {
 
   return (
     <AdminLayout title="Edit Scholarship">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
             <Link
               href="/admin/scholarships"
-              className="inline-flex items-center text-gray-600 hover:text-gray-900"
+              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-2"
             >
-              <ArrowLeft className="w-5 h-5 mr-2" />
+              <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Scholarships
             </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Edit Scholarship</h1>
-              <p className="text-gray-600">Update scholarship information and details</p>
-            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Edit Scholarship</h1>
+            <p className="text-sm sm:text-base text-gray-600">Update scholarship information and details</p>
           </div>
-          
-          {/* Delete Button */}
-          <button
-            onClick={handleDelete}
-            className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <Trash2 className="w-5 h-5 mr-2" />
-            Delete Scholarship
-          </button>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left Column - Basic Information */}
             <div className="space-y-6">
+              {/* Basic Information */}
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <GraduationCap className="w-5 h-5 mr-2 text-indigo-600" />
                   Basic Information
                 </h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Scholarship Title <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -451,7 +371,7 @@ export default function EditScholarship() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Description <span className="text-red-500">*</span>
                     </label>
                     <textarea
@@ -470,7 +390,7 @@ export default function EditScholarship() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Organization <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -488,9 +408,9 @@ export default function EditScholarship() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Category <span className="text-red-500">*</span>
                       </label>
                       <select
@@ -513,7 +433,7 @@ export default function EditScholarship() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Type <span className="text-red-500">*</span>
                       </label>
                       <select
@@ -536,32 +456,28 @@ export default function EditScholarship() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Education Level <span className="text-red-500">*</span>
                       </label>
-                      <select
+                      <input
+                        type="text"
                         name="level"
                         value={formData.level}
                         onChange={handleInputChange}
+                        placeholder={levelExamples}
                         className={`w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
                           errors.level ? 'border-red-300' : 'border-gray-300'
                         }`}
-                      >
-                        {levels.map(level => (
-                          <option key={level} value={level}>
-                            {formatLevelLabel(level)}
-                          </option>
-                        ))}
-                      </select>
+                      />
                       {errors.level && (
                         <p className="mt-1 text-sm text-red-600">{errors.level}</p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Country <span className="text-red-500">*</span>
                       </label>
                       <select
@@ -583,20 +499,17 @@ export default function EditScholarship() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Middle Column - Financial Details & Requirements */}
-            <div className="space-y-6">
               {/* Financial Details */}
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <DollarSign className="w-5 h-5 mr-2 text-green-600" />
                   Financial Details
                 </h3>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
                       <input
                         type="number"
                         name="amount"
@@ -615,7 +528,7 @@ export default function EditScholarship() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
                       <select
                         name="currency"
                         value={formData.currency}
@@ -630,7 +543,7 @@ export default function EditScholarship() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Application Deadline</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Application Deadline</label>
                     <input
                       type="datetime-local"
                       name="deadline"
@@ -646,7 +559,7 @@ export default function EditScholarship() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
                     <select
                       name="status"
                       value={formData.status}
@@ -662,10 +575,13 @@ export default function EditScholarship() {
                   </div>
                 </div>
               </div>
+            </div>
 
+            {/* Right Column - Requirements & Benefits */}
+            <div className="space-y-6 pt-6">
               {/* Requirements */}
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <FileText className="w-5 h-5 mr-2 text-blue-600" />
                   Requirements
                 </h3>
@@ -682,24 +598,20 @@ export default function EditScholarship() {
                     <button
                       type="button"
                       onClick={addRequirement}
-                      className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                      className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
                   
-                  {errors.requirements && (
-                    <p className="text-sm text-red-600">{errors.requirements}</p>
-                  )}
-                  
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
                     {requirements.map((requirement, index) => (
                       <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                         <span className="text-sm text-gray-700">{requirement}</span>
                         <button
                           type="button"
                           onClick={() => removeRequirement(requirement)}
-                          className="text-red-600 hover:text-red-700"
+                          className="text-red-600 hover:text-red-700 transition-colors"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -711,7 +623,7 @@ export default function EditScholarship() {
 
               {/* Benefits */}
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Award className="w-5 h-5 mr-2 text-yellow-600" />
                   Benefits
                 </h3>
@@ -728,24 +640,20 @@ export default function EditScholarship() {
                     <button
                       type="button"
                       onClick={addBenefit}
-                      className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                      className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
                   
-                  {errors.benefits && (
-                    <p className="text-sm text-red-600">{errors.benefits}</p>
-                  )}
-                  
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
                     {benefits.map((benefit, index) => (
                       <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                         <span className="text-sm text-gray-700">{benefit}</span>
                         <button
                           type="button"
                           onClick={() => removeBenefit(benefit)}
-                          className="text-red-600 hover:text-red-700"
+                          className="text-red-600 hover:text-red-700 transition-colors"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -754,124 +662,46 @@ export default function EditScholarship() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right Column - Logo Upload & Preview */}
-            <div className="space-y-6">
-              {/* Logo Upload */}
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                  <Building className="w-5 h-5 mr-2 text-purple-600" />
-                  Organization Logo
-                </h3>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  {logo ? (
-                    <div className="space-y-4">
-                      <div className="mx-auto w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center">
-                        <Building className="w-12 h-12 text-gray-400" />
-                      </div>
-                      <p className="text-sm text-gray-600">{logo.name}</p>
-                      <button
-                        type="button"
-                        onClick={() => setLogo(null)}
-                        className="text-sm text-red-600 hover:text-red-700"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <Upload className="mx-auto w-12 h-12 text-gray-400" />
-                      <div>
-                        <label className="cursor-pointer">
-                          <span className="text-indigo-600 hover:text-indigo-700 font-medium">
-                            Upload organization logo
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileChange}
-                            className="hidden"
-                          />
-                        </label>
-                        <p className="text-sm text-gray-500">PNG, JPG up to 5MB</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Preview */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                  <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
-                  Preview
-                </h4>
-                <div className="space-y-2 text-sm text-gray-600">
-                  <p><strong>Title:</strong> {formData.title || 'Not set'}</p>
-                  <p><strong>Organization:</strong> {formData.organization || 'Not set'}</p>
-                  <p><strong>Category:</strong> {formData.category ? formatCategoryLabel(formData.category) : 'Not set'}</p>
-                  <p><strong>Type:</strong> {formData.type ? formatTypeLabel(formData.type) : 'Not set'}</p>
-                  <p><strong>Level:</strong> {formData.level ? formatLevelLabel(formData.level) : 'Not set'}</p>
-                  <p><strong>Country:</strong> {formData.country || 'Not set'}</p>
-                  <p><strong>Amount:</strong> {formData.amount ? `${formData.currency} ${parseFloat(formData.amount).toLocaleString()}` : 'Not specified'}</p>
-                  <p><strong>Status:</strong> {formData.status ? formData.status.charAt(0).toUpperCase() + formData.status.slice(1) : 'Not set'}</p>
-                  <p><strong>Requirements:</strong> {requirements.length}</p>
-                  <p><strong>Benefits:</strong> {benefits.length}</p>
-                  <p><strong>Deadline:</strong> {formData.deadline ? new Date(formData.deadline).toLocaleDateString() : 'Not set'}</p>
-                </div>
-              </div>
-
-              {/* Tips */}
-              <div className="bg-blue-50 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2 flex items-center">
-                  <Info className="w-4 h-4 mr-2" />
-                  Tips for Success
-                </h4>
-                <ul className="text-sm text-blue-700 space-y-1">
-                  <li>• Be specific and clear in your description</li>
-                  <li>• Include all important requirements</li>
-                  <li>• Highlight key benefits and opportunities</li>
-                  <li>• Set realistic deadlines</li>
-                  <li>• Use an attractive organization logo</li>
-                </ul>
-              </div>
+              {/* Logo Upload removed - no longer supported */}
             </div>
           </div>
 
+          {/* Error Display */}
+          {errors.submit && (
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                <p className="text-sm text-red-600">{errors.submit}</p>
+              </div>
+            </div>
+          )}
+
           {/* Form Actions */}
-          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-            <div className="text-sm text-gray-500">
-              {hasChanges && (
-                <span className="text-orange-600">You have unsaved changes</span>
+          <div className="flex flex-col sm:flex-row items-center justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-6 border-t border-gray-200">
+            <Link
+              href="/admin/scholarships"
+              className="w-full sm:w-auto px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors text-center"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Update Scholarship
+                </>
               )}
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/admin/scholarships"
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </Link>
-              <button
-                type="submit"
-                disabled={isSubmitting || !hasChanges}
-                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-5 h-5 mr-2" />
-                    Update Scholarship
-                  </>
-                )}
-              </button>
-            </div>
+            </button>
           </div>
         </form>
       </div>

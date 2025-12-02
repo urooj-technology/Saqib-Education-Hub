@@ -1,6 +1,6 @@
 const Video = require('../models/Video');
 const User = require('../models/User');
-const { Op, sequelize } = require('sequelize');
+const { Op, sequelize, col, fn } = require('sequelize');
 const logger = require('../config/logger');
 const { createError } = require('../utils/errorHandler');
 
@@ -238,23 +238,23 @@ const createVideo = async (req, res, next) => {
       youtubeId: youtubeId || null
     });
 
-    // Include author information in response
-    const videoWithAuthor = await Video.findByPk(video.id, {
-      include: [
-        {
-          model: User,
-          as: 'author',
-          attributes: ['id', 'firstName', 'email', 'avatar']
-        }
-      ]
-    });
-
-    logger.info(`New video created: ${video.title} by ${req.user.email}`);
+    // Return minimal response immediately
+    const videoData = {
+      id: video.id,
+      title: video.title,
+      description: video.description,
+      category: video.category,
+      status: video.status,
+      youtubeUrl: video.youtubeUrl,
+      youtubeId: video.youtubeId,
+      authorId: video.authorId,
+      createdAt: video.createdAt
+    };
 
     res.status(201).json({
       status: 'success',
       message: 'Video created successfully',
-      data: { video: videoWithAuthor }
+      data: { video: videoData }
     });
 
   } catch (error) {
@@ -548,8 +548,8 @@ const getVideoStats = async (req, res, next) => {
       attributes: [
         'category',
         'status',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-        [sequelize.fn('SUM', sequelize.col('viewCount')), 'totalViews']
+        [fn('COUNT', col('id')), 'count'],
+        [fn('SUM', col('viewCount')), 'totalViews']
       ],
       group: ['category', 'status']
     });

@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Mail, Globe, MapPin, Phone, Send, Clock } from 'lucide-react';
+import { Mail, Globe, MapPin, Phone, Send, Clock, CheckCircle, MessageCircle } from 'lucide-react';
 import Layout from '../../components/Layout';
+import useAdd from '../../api/useAdd';
 
 // Import translations
 import enTranslations from '../../locales/en.json';
@@ -18,6 +19,16 @@ const translations = {
 export default function Contact() {
   const [currentLang, setCurrentLang] = useState('en');
   const [currentTranslations, setCurrentTranslations] = useState(translations.en);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    subject: '',
+    message: ''
+  });
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const { handleAdd: createContact, loading: isLoading, error } = useAdd('contacts');
 
   useEffect(() => {
     const savedLang = localStorage.getItem('language') || 'en';
@@ -25,8 +36,59 @@ export default function Contact() {
     setCurrentTranslations(translations[savedLang] || translations.en);
   }, []);
 
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Basic validation
+    if (!formData.firstName || !formData.lastName || !formData.email || !formData.subject || !formData.message) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      alert('Please enter a valid email address');
+      return;
+    }
+
+    try {
+      await createContact(formData);
+      setIsSubmitted(true);
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        subject: '',
+        message: ''
+      });
+      
+      // Reset success message after 5 seconds
+      setTimeout(() => {
+        setIsSubmitted(false);
+      }, 5000);
+    } catch (error) {
+      console.error('Error submitting contact form:', error);
+      alert('Failed to send message. Please try again.');
+    }
+  };
+
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {isLoading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 text-white py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -59,7 +121,7 @@ export default function Contact() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">Email</h3>
-                    <p className="text-gray-600 mb-2">noorsaqib@saqibeduhub.com</p>
+                    <p className="text-gray-600 mb-2">info@saqibeduhub.com</p>
                     <a 
                       href="mailto:noorsaqib@saqibeduhub.com"
                       className="inline-flex items-center text-indigo-600 hover:text-indigo-700 font-medium"
@@ -106,7 +168,16 @@ export default function Contact() {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">Phone</h3>
                     <p className="text-gray-600 mb-2">+93 (0) 765638741</p>
-                    <p className="text-gray-600">+93 (0) 781151618</p>
+                    <p className="text-gray-600 mb-3">+93 (0) 781151618</p>
+                    <a 
+                      href="https://wa.me/93765638741"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-green-600 hover:text-green-700 font-medium"
+                    >
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      Chat on WhatsApp
+                    </a>
                   </div>
                 </div>
               </div>
@@ -115,28 +186,47 @@ export default function Contact() {
             {/* Contact Form */}
             <div className="bg-gray-50 p-8 rounded-xl">
               <h3 className="text-2xl font-bold text-gray-900 mb-6">Send us a Message</h3>
-              <form className="space-y-6">
+              
+              {/* Success Message */}
+              {isSubmitted && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center">
+                    <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                    <p className="text-green-800 font-medium">
+                      Thank you! Your message has been sent successfully. We'll get back to you soon.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
-                      First Name
+                      First Name *
                     </label>
                     <input
                       type="text"
                       id="firstName"
                       name="firstName"
+                      value={formData.firstName}
+                      onChange={handleInputChange}
+                      required
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                       placeholder="Your first name"
                     />
                   </div>
                   <div>
                     <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                      Last Name
+                      Last Name *
                     </label>
                     <input
                       type="text"
                       id="lastName"
                       name="lastName"
+                      value={formData.lastName}
+                      onChange={handleInputChange}
+                      required
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                       placeholder="Your last name"
                     />
@@ -145,12 +235,15 @@ export default function Contact() {
                 
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address
+                    Email Address *
                   </label>
                   <input
                     type="email"
                     id="email"
                     name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     placeholder="your.email@example.com"
                   />
@@ -158,12 +251,15 @@ export default function Contact() {
                 
                 <div>
                   <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-2">
-                    Subject
+                    Subject *
                   </label>
                   <input
                     type="text"
                     id="subject"
                     name="subject"
+                    value={formData.subject}
+                    onChange={handleInputChange}
+                    required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     placeholder="What's this about?"
                   />
@@ -171,11 +267,14 @@ export default function Contact() {
                 
                 <div>
                   <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-2">
-                    Message
+                    Message *
                   </label>
                   <textarea
                     id="message"
                     name="message"
+                    value={formData.message}
+                    onChange={handleInputChange}
+                    required
                     rows={6}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     placeholder="Tell us how we can help you..."
@@ -184,10 +283,20 @@ export default function Contact() {
                 
                 <button
                   type="submit"
-                  className="w-full bg-indigo-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-indigo-700 transition-colors flex items-center justify-center"
+                  disabled={isLoading}
+                  className="w-full bg-indigo-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                 >
-                  <Send className="w-5 h-5 mr-2" />
-                  Send Message
+                  {isLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5 mr-2" />
+                      Send Message
+                    </>
+                  )}
                 </button>
               </form>
             </div>

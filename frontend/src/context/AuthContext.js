@@ -25,14 +25,14 @@ export const AuthProvider = ({ children }) => {
       const savedToken = localStorage.getItem('token');
       const timestamp = localStorage.getItem('timestamp');
       
-      // Check if token is expired (24 hours)
+      // Check if token is expired (24 hours - matches backend JWT_EXPIRES_IN)
       const now = new Date().getTime();
       const isExpired = !timestamp || now - timestamp > 24 * 60 * 60 * 1000;
       
       if (savedUser && savedToken && !isExpired) {
         try {
           // Validate token with backend
-          const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+          const baseUrl = process.env.NEXT_PUBLIC_API_URL;
           const apiUrl = baseUrl.endsWith('/api') 
             ? `${baseUrl}/auth/me` 
             : `${baseUrl}/api/auth/me`;
@@ -106,7 +106,7 @@ export const AuthProvider = ({ children }) => {
     if (!savedToken) return;
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/auth/me` 
         : `${baseUrl}/api/auth/me`;

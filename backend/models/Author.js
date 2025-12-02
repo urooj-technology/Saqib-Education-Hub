@@ -20,11 +20,15 @@ const Author = sequelize.define('Author', {
   penName: {
     type: DataTypes.STRING(100),
     allowNull: true,
-    field: 'pen_name'
+    field: 'pen_name',
+    charset: 'utf8mb4',
+    collate: 'utf8mb4_unicode_ci'
   },
   bio: {
     type: DataTypes.TEXT,
-    allowNull: true
+    allowNull: true,
+    charset: 'utf8mb4',
+    collate: 'utf8mb4_unicode_ci'
   },
   profileImage: {
     type: DataTypes.STRING(500),

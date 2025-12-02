@@ -1,6 +1,7 @@
 const { Author, User } = require('../models');
 const createError = require('http-errors');
 const { Op } = require('sequelize');
+const logger = require('../config/logger');
 
 // Get all authors with pagination, filtering, and search
 const getAllAuthors = async (req, res, next) => {
@@ -18,8 +19,8 @@ const getAllAuthors = async (req, res, next) => {
     
     if (search) {
       whereClause[Op.or] = [
-        { penName: { [Op.iLike]: `%${search}%` } },
-        { bio: { [Op.iLike]: `%${search}%` } }
+        { penName: { [Op.like]: `%${search}%` } },
+        { bio: { [Op.like]: `%${search}%` } }
       ];
     }
 
@@ -54,6 +55,22 @@ const getAllAuthors = async (req, res, next) => {
       offset: offset
     });
 
+    // Transform authors to include profile image URLs
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+    const baseUrl = `${protocol}://${req.get('host')}`;
+    
+    const transformedAuthors = authors.map(author => {
+      const authorData = author.toJSON();
+      
+      // Convert profile image filename to full URL
+      if (authorData.profileImage) {
+        authorData.profileImageUrl = `${baseUrl}/uploads/images/${authorData.profileImage}`;
+        authorData.profileImage = authorData.profileImageUrl; // For backward compatibility
+      }
+      
+      return authorData;
+    });
+
     // Calculate pagination metadata
     const totalPages = Math.ceil(count / limitNum);
     const hasNextPage = page < totalPages;
@@ -63,7 +80,7 @@ const getAllAuthors = async (req, res, next) => {
     const response = {
       status: 'success',
       data: {
-        authors,
+        authors: transformedAuthors,
         pagination: {
           currentPage: parseInt(page),
           totalPages,
@@ -104,9 +121,18 @@ const getAuthorById = async (req, res, next) => {
       return next(createError(404, 'Author not found'));
     }
 
+    // Convert profile image to full URL
+    const authorData = author.toJSON();
+    if (authorData.profileImage) {
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+      const baseUrl = `${protocol}://${req.get('host')}`;
+      authorData.profileImageUrl = `${baseUrl}/uploads/images/${authorData.profileImage}`;
+      authorData.profileImage = authorData.profileImageUrl;
+    }
+
     res.json({
       success: true,
-      data: author,
+      data: authorData,
       message: 'Author retrieved successfully'
     });
   } catch (error) {
@@ -118,12 +144,30 @@ const getAuthorById = async (req, res, next) => {
 // Create new author
 const createAuthor = async (req, res, next) => {
   try {
-    console.log('createAuthor called with body:', req.body);
-    console.log('createAuthor user:', req.user);
-    console.log('createAuthor file:', req.file);
+    // Author creation started
     
     const { penName, bio } = req.body;
-    const profileImage = req.file ? req.file.filename : null;
+    let profileImage = null;
+    
+    // Handle profile image with compression if provided
+    if (req.file) {
+      const { compressImage } = require('../middleware/upload');
+      
+      // Compress profile image in background
+      compressImage(req.file.path, {
+        maxWidth: 400,
+        maxHeight: 400,
+        quality: 80,
+        format: 'jpeg',
+        progressive: true
+      }).then(() => {
+        logger.info(`Compressed profile image: ${req.file.originalname}`);
+      }).catch(err => {
+        logger.warn('Profile image compression failed:', err.message);
+      });
+      
+      profileImage = req.file.filename;
+    }
 
     // Validate required fields
     if (!penName || !penName.trim()) {
@@ -143,12 +187,7 @@ const createAuthor = async (req, res, next) => {
       return next(createError(409, 'Author with this pen name already exists'));
     }
 
-    console.log('About to create author with data:', {
-      userId: req.user.id,
-      penName: penName.trim(),
-      bio: bio.trim(),
-      profileImage
-    });
+    // Creating author with validated data
     
     // Create author
     const author = await Author.create({
@@ -157,25 +196,20 @@ const createAuthor = async (req, res, next) => {
       bio: bio.trim(),
       profileImage
     });
-    
-    console.log('Author created successfully:', author);
 
-    // Fetch the created author with user details
-    const createdAuthor = await Author.findByPk(author.id, {
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id', 'firstName', 'email']
-        }
-      ]
-    });
-
-    console.log(`Author created: ${author.penName} by user ${req.user.id}`);
+    // Return minimal response immediately
+    const authorData = {
+      id: author.id,
+      penName: author.penName,
+      bio: author.bio,
+      profileImage: author.profileImage,
+      userId: author.userId,
+      createdAt: author.createdAt
+    };
 
     res.status(201).json({
       success: true,
-      data: createdAuthor,
+      data: authorData,
       message: 'Author created successfully'
     });
   } catch (error) {

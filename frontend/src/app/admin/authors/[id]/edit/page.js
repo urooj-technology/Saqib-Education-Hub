@@ -135,7 +135,7 @@ export default function EditAuthor() {
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this author? This action cannot be undone.')) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
         const apiUrl = baseUrl.endsWith('/api') 
           ? `${baseUrl}/authors/${authorId}` 
           : `${baseUrl}/api/authors/${authorId}`;

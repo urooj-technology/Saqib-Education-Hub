@@ -17,14 +17,17 @@ const useFetchObject = (queryKey, endpoint, id, token) => {
       finalEndpoint = `${finalEndpoint}/${id}`;
     }
     
-    console.log("Fetching single object from:", `${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com/api'}/${finalEndpoint}`);
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+    
+    const apiUrl = baseUrl.endsWith('/api') 
+      ? `${baseUrl}/${finalEndpoint}` 
+      : `${baseUrl}/api/${finalEndpoint}`;
+    
+    console.log("Fetching single object from:", apiUrl);
 
-    const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com/api'}/${finalEndpoint}`,
-      {
-        headers,
-      }
-    );
+    const response = await axios.get(apiUrl, {
+      headers,
+    });
     return response.data;
   };
 

@@ -51,12 +51,12 @@ const protect = async (req, res, next) => {
 
       if (user.status !== 'active') {
         console.log('User account is not active:', user.status);
-        return next(createError(401, 'Account is not active'));
+        return next(createError(401, 'Your account is not activated. Please contact the system administrator to activate your account.'));
       }
 
       // Check if account is locked
       if (user.lockedUntil && user.lockedUntil > new Date()) {
-        return next(createError(423, 'Account is temporarily locked'));
+        return next(createError(423, 'Your account is temporarily locked due to multiple failed login attempts. Please try again later or contact the system administrator.'));
       }
 
       // Add user to request

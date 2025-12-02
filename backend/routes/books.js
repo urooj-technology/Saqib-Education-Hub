@@ -20,6 +20,7 @@ const {
 const { protect, authorize, optionalAuth } = require('../middleware/auth');
 const { validateBook } = require('../middleware/validation');
 const { upload, handleMulterError } = require('../middleware/upload');
+const { ultraCompressImages } = require('../middleware/imageCompression');
 
 // Public routes (with optional authentication for admin features)
 router.get('/', optionalAuth, getAllBooks);
@@ -89,13 +90,13 @@ router.use(authorize('admin', 'teacher'));
 router.post('/', upload.fields([
   { name: 'coverImage', maxCount: 1 },
   { name: 'bookFile', maxCount: 1 }
-]), handleMulterError, validateBook, createBook);
+]), handleMulterError, ultraCompressImages(), validateBook, createBook);
 
 // PUT /api/books/:id - Update book
 router.put('/:id', upload.fields([
   { name: 'coverImage', maxCount: 1 },
   { name: 'bookFile', maxCount: 1 }
-]), handleMulterError, validateBook, updateBook);
+]), handleMulterError, ultraCompressImages(), validateBook, updateBook);
 
 // DELETE /api/books/:id - Delete book
 router.delete('/:id', deleteBook);

@@ -25,16 +25,14 @@ const Article = sequelize.define('Article', {
       notEmpty: true
     }
   },
-  excerpt: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  category: {
-    type: DataTypes.STRING(100),
+  categoryId: {
+    type: DataTypes.INTEGER,
     allowNull: false,
-    validate: {
-      notEmpty: true
-    }
+    references: {
+      model: 'article_categories',
+      key: 'id'
+    },
+    field: 'category_id'
   },
   featuredImage: {
     type: DataTypes.STRING(500),
@@ -51,34 +49,14 @@ const Article = sequelize.define('Article', {
   },
   publishedAt: {
     type: DataTypes.DATE,
-    allowNull: true
-  },
-  readTime: {
-    type: DataTypes.INTEGER, // in minutes
     allowNull: true,
-    validate: {
-      min: 1
-    }
-  },
-  likeCount: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    validate: {
-      min: 0
-    }
-  },
-  commentCount: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    validate: {
-      min: 0
-    }
+    field: 'published_at'
   },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
     allowNull: false,
-    field: 'isActive'
+    field: 'is_active'
   }
 }, {
   tableName: 'articles',
@@ -87,9 +65,8 @@ const Article = sequelize.define('Article', {
     {
       fields: ['title']
     },
-
     {
-      fields: ['category']
+      fields: ['category_id']
     },
     {
       fields: ['status']
@@ -98,7 +75,13 @@ const Article = sequelize.define('Article', {
       fields: ['published_at']
     },
     {
-      fields: ['isActive']
+      fields: ['is_active']
+    },
+    {
+      fields: ['status', 'is_active']
+    },
+    {
+      fields: ['category_id', 'status']
     }
   ]
 });
@@ -116,13 +99,17 @@ Article.prototype.incrementComment = async function() {
 };
 
 // Class methods
-Article.findByCategory = function(category) {
+Article.findByCategory = function(categoryId) {
   return this.findAll({ 
     where: { 
-      category, 
+      categoryId, 
       status: 'published',
       isActive: true
     },
+    include: [{
+      model: require('./ArticleCategory'),
+      as: 'category'
+    }],
     order: [['publishedAt', 'DESC']]
   });
 };
@@ -146,8 +133,7 @@ Article.search = function(query) {
     where: {
       [Op.or]: [
         { title: { [Op.like]: `%${query}%` } },
-        { content: { [Op.like]: `%${query}%` } },
-        { excerpt: { [Op.like]: `%${query}%` } }
+        { content: { [Op.like]: `%${query}%` } }
       ],
       status: 'published',
       isActive: true

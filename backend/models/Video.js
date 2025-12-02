@@ -71,7 +71,7 @@ const Video = sequelize.define('Video', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
     allowNull: false,
-    field: 'isActive'
+    field: 'is_active'
   }
 }, {
   tableName: 'videos',
@@ -90,7 +90,7 @@ const Video = sequelize.define('Video', {
       fields: ['author_id']
     },
     {
-      fields: ['isActive']
+      fields: ['is_active']
     }
   ]
 });

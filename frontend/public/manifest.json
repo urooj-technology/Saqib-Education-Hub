@@ -1,0 +1,23 @@
+{
+  "name": "Noor Saqib Education Hub",
+  "short_name": "Saqib Education",
+  "description": "Professional multilingual educational platform for books, jobs, scholarships, articles, and educational videos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/logo/Logo Designe.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo/Logo Designe.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

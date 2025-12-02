@@ -31,7 +31,8 @@ const UserSubscription = sequelize.define('UserSubscription', {
   },
   endDate: {
     type: DataTypes.DATE,
-    allowNull: false
+    allowNull: false,
+    field: 'end_date'
   },
   status: {
     type: DataTypes.ENUM('active', 'expired', 'cancelled', 'pending'),

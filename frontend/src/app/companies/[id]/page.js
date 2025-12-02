@@ -52,7 +52,7 @@ export default function CompanyProfile() {
   const fetchCompanyJobs = async () => {
     try {
       setJobsLoading(true);
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/companies/${companyId}/jobs` 
         : `${baseUrl}/api/companies/${companyId}/jobs`;
@@ -160,6 +160,12 @@ export default function CompanyProfile() {
 
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {loading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       <div className="min-h-screen bg-gray-50">
         {/* Company Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white py-12">

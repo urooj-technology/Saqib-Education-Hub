@@ -23,7 +23,7 @@ export default function JobDetail() {
   // Increment view count function
   const incrementViewCount = useCallback(async (type, id) => {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/${type}/${id}/view` 
         : `${baseUrl}/api/${type}/${id}/view`;
@@ -187,6 +187,12 @@ export default function JobDetail() {
 
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {loading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       {/* Header Navigation */}
       <div className=" ">
         <div className="bg-blue-600 text-white max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -315,6 +321,51 @@ export default function JobDetail() {
 
             {/* Job Description Content */}
             <div className="space-y-8">
+              {/* Job Overview - Mobile First */}
+              <div className="bg-white rounded-xl shadow-lg p-6 lg:hidden">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Overview</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-600">Post Date:</span>
+                    <span className="font-medium">{formatDate(job.post_date || job.createdAt)}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-600">Closing Date:</span>
+                    <span className="font-medium">{formatDate(job.closing_date || job.deadline)}</span>
+                  </div>
+                  {job.reference_number && (
+                    <div className="flex justify-between border-b border-gray-100 pb-2">
+                      <span className="text-gray-600">Reference:</span>
+                      <span className="font-medium">#{job.reference_number}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-600">Number of Vacancies:</span>
+                    <span className="font-medium">{job.number_of_vacancies || 1}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-600">Salary Range:</span>
+                    <span className="font-medium">{job.salary_range || formatSalary(job.salary, job.currency)}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-600">Experience Level:</span>
+                    <span className="font-medium capitalize">{job.experience?.replace('-', ' ')}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-600">Job Type:</span>
+                    <span className="font-medium">{getTypeLabel(job.type)}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="text-gray-600">Gender:</span>
+                    <span className="font-medium capitalize">{job.gender || 'Any'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Views:</span>
+                    <span className="font-medium">{viewCount}</span>
+                  </div>
+                </div>
+              </div>
+
               {/* About Company */}
               <div className="bg-white rounded-xl shadow-lg p-8">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">About {job.company?.name || 'Company'}</h2>
@@ -428,14 +479,14 @@ export default function JobDetail() {
 
 
                 {/* Functional Areas */}
-                <div className="mt-6">
+                {/* <div className="mt-6">
                   <h4 className="font-semibold text-gray-900 mb-3">Functional Area</h4>
                   <div className="flex flex-wrap gap-2">
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">IT - Software</span>
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">Software developer and data base development</span>
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">Software developer</span>
                   </div>
-                </div>
+                </div> */}
 
                 <div className="mt-4">
                   <h4 className="font-semibold text-gray-900 mb-3">Countries</h4>
@@ -491,8 +542,8 @@ export default function JobDetail() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Job Overview */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
+            {/* Job Overview - Desktop Only */}
+            <div className="bg-white rounded-xl shadow-lg p-6 hidden lg:block">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Overview</h3>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between border-b border-gray-100 pb-2">

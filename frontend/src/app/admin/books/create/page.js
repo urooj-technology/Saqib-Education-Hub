@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
+import {
   Save, 
   X, 
   Upload, 
@@ -12,21 +12,17 @@ import {
   Trash2,
   User,
   Search,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
-import AdminLayout from '../../../../components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout';
 import Link from 'next/link';
-import { useAuth } from '../../../../context/AuthContext';
-import useAdd from '../../../../api/useAdd';
-import useFetchObjects from '../../../../api/useFetchObjects';
+import { useAuth } from '@/context/AuthContext';
+import useAdd from '@/api/useAdd';
+import useFetchObjects from '@/api/useFetchObjects';
 import { useRouter } from 'next/navigation';
-
-const categories = [
-  'Mathematics', 'Computer Science', 'Physics', 'Chemistry', 
-  'Biology', 'Literature', 'History', 'Geography', 'Economics',
-  'Psychology', 'Philosophy', 'Art', 'Music', 'Sports',
-  'Engineering', 'Medicine', 'Law', 'Business', 'Education'
-];
+import { smartUpload, uploadFileInChunks } from '../../../../utils/chunkedUpload';
+import { toast } from 'react-toastify';
 
 const languages = ['English', 'Arabic', 'Pashto', 'Dari', 'French', 'German', 'Spanish', 'Urdu', 'Persian'];
 const formats = ['pdf', 'epub', 'mobi', 'docx', 'txt', 'html'];
@@ -35,6 +31,26 @@ const currencies = ['USD', 'EUR', 'GBP', 'AFN', 'PKR'];
 
 export default function CreateBook() {
   const router = useRouter();
+  const auth = useAuth();
+  const token = auth.token;
+  
+  // Fetch book categories using useFetchObjects
+  const { data: categoriesData, loading: categoriesLoading, error: categoriesError, refetch: refetchBookCategories } = useFetchObjects(
+    "book-categories",
+    "book-categories", 
+    token
+  );
+  const bookCategories = categoriesData?.data?.categories || [];
+  
+  // Create category functionality using useAdd
+  const { handleAdd: handleAddCategory, loading: createCategoryLoading } = useAdd(
+    "book-categories",
+    token,
+    null,
+    "Category created successfully!",
+    "Failed to create category"
+  );
+  
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -43,7 +59,7 @@ export default function CreateBook() {
     edition: '',
     pages: '',
     language: 'English',
-    category: '',
+    categoryId: '',
     format: 'pdf',
     price: '0.00',
     currency: 'USD',
@@ -51,47 +67,34 @@ export default function CreateBook() {
     tags: []
   });
 
-  const [authors, setAuthors] = useState([]);
+  const [selectedAuthorIds, setSelectedAuthorIds] = useState([]); // Array of selected author IDs (like article page)
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coverImage, setCoverImage] = useState(null);
   const [bookFile, setBookFile] = useState(null);
   const [tagInput, setTagInput] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
 
-  // New state for author management
-  const [existingAuthors, setExistingAuthors] = useState([]);
+  // Author management state
+  const [showAddAuthorModal, setShowAddAuthorModal] = useState(false);
   const [authorSearchTerm, setAuthorSearchTerm] = useState('');
-  const [showAuthorDropdown, setShowAuthorDropdown] = useState(false);
+  
+  // Category management state
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newCategoryData, setNewCategoryData] = useState({
+    name: ''
+  });
 
 
 
-  const auth = useAuth();
-  const token = auth.token;
   const { handleAdd, loading, success, responseData, error } = useAdd("books", token);
   
+  // Hook for creating new authors
+  const { handleAdd: handleAddAuthor, loading: authorCreating } = useAdd('authors', token);
+  
   // Fetch existing authors
-  const { data: fetchedAuthors, loading: authorsLoading } = useFetchObjects("authors", "authors", token);
-
-  // Debug logging for authors
-  console.log('Create Book - Fetched authors:', fetchedAuthors);
-  console.log('Create Book - Authors loading:', authorsLoading);
-  console.log('Create Book - Existing authors state:', existingAuthors);
-
-  useEffect(() => {
-    console.log('Create Book - Authors data changed:', fetchedAuthors);
-    if (fetchedAuthors?.data?.authors && Array.isArray(fetchedAuthors.data.authors)) {
-      console.log('Create Book - Setting authors from data.authors:', fetchedAuthors.data.authors);
-      setExistingAuthors(fetchedAuthors.data.authors);
-    } else if (fetchedAuthors?.data && Array.isArray(fetchedAuthors.data)) {
-      console.log('Create Book - Setting authors from data.data:', fetchedAuthors.data);
-      setExistingAuthors(fetchedAuthors.data);
-    } else if (fetchedAuthors && Array.isArray(fetchedAuthors)) {
-      console.log('Create Book - Setting authors from direct array:', fetchedAuthors);
-      setExistingAuthors(fetchedAuthors);
-    } else {
-      console.log('Create Book - No valid authors data found');
-    }
-  }, [fetchedAuthors]);
+  const { data: authorsData, loading: authorsLoading, refetch: refetchAuthors } = useFetchObjects("authors", "authors?limit=1000", token);
 
   useEffect(() => {
     if (success && responseData) {
@@ -115,6 +118,49 @@ export default function CreateBook() {
     }
   };
 
+  const handleCategoryInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewCategoryData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryData.name.trim()) {
+      toast.error('Category name is required');
+      return;
+    }
+
+    try {
+      const response = await handleAddCategory(newCategoryData);
+      
+      if (response) {
+        // Reset form
+        setNewCategoryData({
+          name: ''
+        });
+        
+        // Close modal
+        setShowAddCategoryModal(false);
+        
+        // Set the new category as selected
+        setFormData(prev => ({
+          ...prev,
+          categoryId: response.data.category.id
+        }));
+        
+        // Refetch categories to update the dropdown
+        refetchBookCategories();
+        
+        // Show success message
+        toast.success('Category created successfully!');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to create category');
+    }
+  };
+
   const handleFileChange = (e, field) => {
     const file = e.target.files[0];
     if (file) {
@@ -126,53 +172,34 @@ export default function CreateBook() {
     }
   };
 
-  const handleAuthorChange = (index, field, value) => {
-    const newAuthors = [...authors];
-    newAuthors[index] = { ...newAuthors[index], [field]: value };
-    setAuthors(newAuthors);
+  // Handle author selection (toggle checkbox)
+  const handleAuthorToggle = (authorId) => {
+    setSelectedAuthorIds(prev =>
+      prev.includes(authorId)
+        ? prev.filter(id => id !== authorId)
+        : [...prev, authorId]
+    );
   };
 
-  const addAuthor = () => {
-    setAuthors([...authors, { 
-      id: null, // null means it's a new author
-      penName: '', 
-      bio: '', 
-      isNew: true 
-    }]);
-  };
-
-  const removeAuthor = (index) => {
-    if (authors.length > 1) {
-      const newAuthors = authors.filter((_, i) => i !== index);
-      setAuthors(newAuthors);
+  // Handle adding new author via modal
+  const handleAddNewAuthor = async (authorData) => {
+    try {
+      const formData = new FormData();
+      formData.append('penName', authorData.penName);
+      formData.append('bio', authorData.bio || '');
+      
+      const response = await handleAddAuthor(formData);
+      
+      if (response?.data?.author) {
+        // Add the new author to selected authors
+        setSelectedAuthorIds(prev => [...prev, response.data.author.id]);
+        // Refresh authors list
+        refetchAuthors();
+      }
+    } catch (error) {
+      console.error('Error creating author:', error);
     }
   };
-
-  // New functions for author management
-  const selectExistingAuthor = (author) => {
-    setAuthors([...authors, { 
-      ...author, 
-      id: author.id, 
-      isNew: false 
-    }]);
-    setShowAuthorDropdown(false);
-    setAuthorSearchTerm('');
-  };
-
-  const createNewAuthorInline = (index) => {
-    const newAuthors = [...authors];
-    newAuthors[index] = { 
-      ...newAuthors[index], 
-      isNew: true,
-      id: null 
-    };
-    setAuthors(newAuthors);
-  };
-
-  const filteredExistingAuthors = existingAuthors.filter(author => 
-    author.penName.toLowerCase().includes(authorSearchTerm.toLowerCase()) &&
-    !authors.some(selectedAuthor => selectedAuthor.id === author.id)
-  );
 
   const handleTagInputChange = (e) => {
     setTagInput(e.target.value);
@@ -202,8 +229,8 @@ export default function CreateBook() {
       newErrors.title = 'Title is required';
     }
 
-    if (!formData.category) {
-      newErrors.category = 'Category is required';
+    if (!formData.categoryId) {
+      newErrors.categoryId = 'Category is required';
     }
 
     if (!formData.language) {
@@ -232,8 +259,8 @@ export default function CreateBook() {
     }
 
     // Validate authors
-    if (authors.length === 0 || authors.some(author => !author.penName.trim())) {
-      newErrors.authors = 'At least one author with pen name is required';
+    if (selectedAuthorIds.length === 0) {
+      newErrors.authors = 'At least one author is required';
     }
 
     setErrors(newErrors);
@@ -248,10 +275,58 @@ export default function CreateBook() {
     }
 
     setIsSubmitting(true);
+    setIsUploading(true);
+    setUploadProgress(0);
 
     try {
-      // Prepare form data for multipart upload
+      // Use selected author IDs directly (all authors are existing)
+      const processedAuthors = selectedAuthorIds;
+      
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const uploadUrl = baseUrl.endsWith('/api') ? `${baseUrl}/upload` : `${baseUrl}/api/upload`;
+      
+      let uploadedBookFile = null;
+      
+      // Upload book file using chunked upload for better performance
+      if (bookFile) {
+        try {
+          console.log('Book file selected:', bookFile.name, bookFile.size);
+          
+          // Use chunked upload for files larger than 5MB
+          if (bookFile.size > 5 * 1024 * 1024) {
+            console.log('Using chunked upload for large file');
+            const uploadResult = await uploadFileInChunks(
+              bookFile,
+              uploadUrl,
+              { chunkSize: 1024 * 1024 }, // 1MB chunks
+              (progress) => {
+                setUploadProgress(Math.round(progress * 0.8)); // 80% for file upload
+              },
+              {
+                'Authorization': `Token ${localStorage.getItem('token')}`
+              }
+            );
+            
+            uploadedBookFile = uploadResult;
+            console.log('Chunked upload completed:', uploadResult);
+          } else {
+            console.log('Using regular upload for small file');
+            // For smaller files, we'll add directly to form data
+          }
+        } catch (uploadError) {
+          console.error('Book file upload failed:', uploadError);
+          throw new Error('Failed to upload book file. Please try again.');
+        }
+      }
+
+      // Prepare form data for API
       const formDataToSend = new FormData();
+      
+      // Debug: Log form data
+      console.log('Form data being sent:', formData);
+      console.log('Authors being sent:', processedAuthors);
+      console.log('Book file:', bookFile);
+      console.log('Cover image:', coverImage);
       
       // Add book data
       Object.keys(formData).forEach(key => {
@@ -262,25 +337,53 @@ export default function CreateBook() {
         }
       });
 
-      // Add authors data
-      formDataToSend.append('authors', JSON.stringify(authors));
+      // Add authors data - use processed author IDs (including newly created ones)
+      formDataToSend.append('authors', JSON.stringify(processedAuthors));
 
-      // Add files
+      // Add book file to form data
+      if (bookFile) {
+        setUploadProgress(85);
+        
+        // If we used chunked upload, send the result
+        if (uploadedBookFile) {
+          formDataToSend.append('uploadedBookFile', JSON.stringify(uploadedBookFile));
+        } else {
+          // For smaller files, add directly to form data
+          formDataToSend.append('bookFile', bookFile);
+        }
+      }
+
+      // Add cover image (smaller file, regular upload)
       if (coverImage) {
+        setUploadProgress(90);
         formDataToSend.append('coverImage', coverImage);
       }
-      if (bookFile) {
-        formDataToSend.append('bookFile', bookFile);
+
+      setUploadProgress(95);
+
+      // Debug: Log FormData contents
+      console.log('FormData contents:');
+      for (let [key, value] of formDataToSend.entries()) {
+        console.log(`${key}:`, value);
       }
+
+      // Debug: Check API URL
+      const apiUrl = baseUrl.endsWith('/api') ? `${baseUrl}/books` : `${baseUrl}/api/books`;
+      console.log('API URL being used:', apiUrl);
+      console.log('Environment API URL:', process.env.NEXT_PUBLIC_API_URL);
 
       // Call the API
       await handleAdd(formDataToSend);
+      
+      setUploadProgress(100);
       
     } catch (error) {
       console.error('Error creating book:', error);
       setErrors({ submit: 'Error creating book. Please try again.' });
     } finally {
       setIsSubmitting(false);
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -303,8 +406,8 @@ export default function CreateBook() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             {/* Left Column - Basic Information */}
             <div className="space-y-4">
               <div>
@@ -341,26 +444,39 @@ export default function CreateBook() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Category <span className="text-red-500">*</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Category <span className="text-red-500">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCategoryModal(true)}
+                          className="flex items-center text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add Category
+                        </button>
+                      </div>
                       <select
-                        name="category"
-                        value={formData.category}
+                        name="categoryId"
+                        value={formData.categoryId}
                         onChange={handleInputChange}
+                        disabled={categoriesLoading}
                         className={`w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
-                          errors.category ? 'border-red-300' : 'border-gray-300'
-                        }`}
+                          errors.categoryId ? 'border-red-300' : 'border-gray-300'
+                        } ${categoriesLoading ? 'bg-gray-100' : ''}`}
                       >
-                        <option value="">Select category</option>
-                        {categories.map(category => (
-                          <option key={category} value={category}>{category}</option>
+                        <option value="">{categoriesLoading ? 'Loading categories...' : bookCategories.length === 0 ? 'No categories available - Create one below' : 'Select category'}</option>
+                        {bookCategories.map(category => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
                         ))}
                       </select>
-                      {errors.category && (
-                        <p className="mt-1 text-sm text-red-600">{errors.category}</p>
+                      {errors.categoryId && (
+                        <p className="mt-1 text-sm text-red-600">{errors.categoryId}</p>
                       )}
                     </div>
 
@@ -398,7 +514,7 @@ export default function CreateBook() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Publication Year</label>
                       <input
@@ -458,7 +574,7 @@ export default function CreateBook() {
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Technical Details</h3>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Format <span className="text-red-500">*</span>
@@ -497,7 +613,7 @@ export default function CreateBook() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
                       <input
@@ -574,176 +690,111 @@ export default function CreateBook() {
               </div>
 
               {/* Authors */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">Authors</h3>
-                  <div className="flex space-x-2">
-                    {/* Add Existing Author Button */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setShowAuthorDropdown(!showAuthorDropdown)}
-                        className="inline-flex items-center px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-                      >
-                        <User className="w-4 h-4 mr-1" />
-                        Select Author
-                        <ChevronDown className="w-4 h-4 ml-1" />
-                      </button>
-                      
-                      {/* Author Selection Dropdown */}
-                      {showAuthorDropdown && (
-                        <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                          <div className="p-3 border-b border-gray-200">
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                              <input
-                                type="text"
-                                placeholder="Search authors..."
-                                value={authorSearchTerm}
-                                onChange={(e) => setAuthorSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                              />
-                            </div>
-                          </div>
-                          <div className="max-h-60 overflow-y-auto">
-                            {authorsLoading ? (
-                              <div className="p-4 text-center text-sm text-gray-500">
-                                Loading authors...
-                              </div>
-                            ) : filteredExistingAuthors.length === 0 ? (
-                              <div className="p-4 text-center text-sm text-gray-500">
-                                {authorSearchTerm ? 'No authors found' : 'No authors available'}
-                              </div>
-                            ) : (
-                              filteredExistingAuthors.map((author) => (
-                                <button
-                                  key={author.id}
-                                  type="button"
-                                  onClick={() => selectExistingAuthor(author)}
-                                  className="w-full p-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                                >
-                                  <div className="font-medium text-gray-900">{author.penName}</div>
-                                  {author.bio && (
-                                    <div className="text-sm text-gray-500 truncate">{author.bio}</div>
-                                  )}
-                                  <div className="text-xs text-gray-400 mt-1">
-                                    ID: {author.id}
-                                  </div>
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Add New Author Button */}
-                    <button
-                      type="button"
-                      onClick={addAuthor}
-                      className="inline-flex items-center px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      New Author
-                    </button>
+              {/* Authors Selection - Clean checkbox design like article page */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    <User className="w-4 h-4 inline mr-1" />
+                    Authors
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAuthorModal(true)}
+                    className="inline-flex items-center px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Author
+                  </button>
+                </div>
+
+                {/* Author Search */}
+                <div className="mb-3">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search authors..."
+                      value={authorSearchTerm}
+                      onChange={(e) => setAuthorSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
                   </div>
                 </div>
-                
-                {errors.authors && (
-                  <p className="mb-2 text-sm text-red-600">{errors.authors}</p>
-                )}
-                
-                <div className="space-y-4">
-                  {authors.map((author, index) => (
-                    <div key={index} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-medium text-gray-900">Author {index + 1}</h4>
-                          {author.id && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Existing
-                            </span>
-                          )}
-                          {author.isNew && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              New
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {author.id && (
-                            <button
-                              type="button"
-                              onClick={() => createNewAuthorInline(index)}
-                              className="text-blue-600 hover:text-blue-700 text-sm"
-                            >
-                              Edit
-                            </button>
-                          )}
-                          {authors.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeAuthor(index)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Pen Name <span className="text-red-500">*</span>
-                          </label>
+
+                {/* Authors List with Checkboxes */}
+                <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+                  {authorsLoading ? (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mx-auto"></div>
+                      <p className="text-xs text-gray-500 mt-2">Loading authors...</p>
+                    </div>
+                  ) : authorsData?.data?.authors?.length > 0 ? (
+                    authorsData.data.authors
+                      .filter(author => 
+                        author.penName?.toLowerCase().includes(authorSearchTerm.toLowerCase()) ||
+                        author.bio?.toLowerCase().includes(authorSearchTerm.toLowerCase())
+                      )
+                      .map(author => (
+                        <div key={author.id} className="flex items-start space-x-3 py-3 px-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
                           <input
-                            type="text"
-                            value={author.penName}
-                            onChange={(e) => handleAuthorChange(index, 'penName', e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="Enter pen name"
+                            type="checkbox"
+                            id={`author-${author.id}`}
+                            checked={selectedAuthorIds.includes(author.id)}
+                            onChange={() => handleAuthorToggle(author.id)}
+                            className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                           />
+                          <label
+                            htmlFor={`author-${author.id}`}
+                            className="flex-1 cursor-pointer"
+                          >
+                            <div className="text-sm font-medium text-gray-900">
+                              {author.penName}
+                            </div>
+                            <div className="text-xs text-gray-500 line-clamp-2">
+                              {author.bio}
+                            </div>
+                          </label>
                         </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                          <textarea
-                            value={author.bio}
-                            onChange={(e) => handleAuthorChange(index, 'bio', e.target.value)}
-                            rows={2}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="Enter author bio"
-                          />
-                        </div>
-                        
-                        {/* Show additional fields for new authors */}
-                        {author.isNew && (
-                          <div className="text-sm text-gray-500 italic">
-                            Additional author details can be added later from the Authors section.
-                          </div>
-                        )}
-                      </div>
+                      ))
+                  ) : (
+                    <div className="text-center py-6">
+                      <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">No authors found</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Click "Add Author" to create a new author
+                      </p>
                     </div>
-                  ))}
+                  )}
                 </div>
-                
-                <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                  <div className="flex items-start space-x-2">
-                    <div className="flex-shrink-0 mt-0.5">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+
+                {/* Selected Authors Summary */}
+                {selectedAuthorIds.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="text-xs font-medium text-gray-700 mb-2">
+                      Selected Authors ({selectedAuthorIds.length})
                     </div>
-                    <div className="text-sm text-blue-700">
-                      <p className="font-medium">Author Management Tips:</p>
-                      <ul className="mt-1 space-y-1 text-xs">
-                        <li>• <strong>Select Author:</strong> Choose from existing authors in your system</li>
-                        <li>• <strong>New Author:</strong> Create a new author profile inline</li>
-                        <li>• <strong>Edit:</strong> Modify existing author details if needed</li>
-                        <li>• New authors will be automatically created when you save the book</li>
-                      </ul>
+                    <div className="space-y-1">
+                      {selectedAuthorIds.map(authorId => {
+                        const author = authorsData?.data?.authors?.find(a => a.id === authorId);
+                        return author ? (
+                          <div
+                            key={authorId}
+                            className="flex items-center justify-between px-2 py-1 bg-indigo-50 rounded text-xs"
+                          >
+                            <span className="text-indigo-700">{author.penName}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleAuthorToggle(authorId)}
+                              className="text-indigo-500 hover:text-indigo-700"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : null;
+                      })}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -835,19 +886,6 @@ export default function CreateBook() {
                 )}
               </div>
 
-              {/* Preview */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-2">Preview</h4>
-                <div className="space-y-2 text-sm text-gray-600">
-                  <p><strong>Title:</strong> {formData.title || 'Not set'}</p>
-                  <p><strong>Category:</strong> {formData.category || 'Not set'}</p>
-                  <p><strong>Language:</strong> {formData.language || 'Not set'}</p>
-                  <p><strong>Format:</strong> {formData.format || 'Not set'}</p>
-                  <p><strong>Status:</strong> {formData.status || 'Not set'}</p>
-                  <p><strong>Authors:</strong> {authors.filter(a => a.penName.trim()).length || 0}</p>
-                  <p><strong>Tags:</strong> {formData.tags.length || 0}</p>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -858,20 +896,41 @@ export default function CreateBook() {
             </div>
           )}
 
+          {/* Upload Progress */}
+          {isUploading && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-blue-700">Uploading files...</span>
+                <span className="text-sm text-blue-600">{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+
           {/* Form Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-gray-200">
             <Link
               href="/admin/books"
-              className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              className="w-full sm:w-auto px-4 py-2 text-sm border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-50 transition-colors text-center"
             >
               Cancel
             </Link>
             <button
               type="submit"
-              disabled={isSubmitting || loading}
-              className="inline-flex items-center px-4 py-2 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              disabled={isSubmitting || loading || isUploading}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isSubmitting || loading ? (
+              {isUploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Uploading... ({uploadProgress}%)
+                </>
+              ) : isSubmitting || loading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   Creating...
@@ -885,8 +944,158 @@ export default function CreateBook() {
             </button>
           </div>
         </form>
+
+        {/* Add Category Modal */}
+        {showAddCategoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Add New Category</h3>
+                <button
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Category Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={newCategoryData.name}
+                    onChange={handleCategoryInputChange}
+                    placeholder="Enter category name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                
+              </div>
+              
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+                <button
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  disabled={createCategoryLoading || !newCategoryData.name.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center"
+                >
+                  {createCategoryLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Create Category
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Author Modal - Professional Design */}
+        {showAddAuthorModal && (
+          <AddAuthorModal
+            onClose={() => setShowAddAuthorModal(false)}
+            onAuthorCreated={handleAddNewAuthor}
+          />
+        )}
       </div>
     </AdminLayout>
+  );
+}
+
+// Add Author Modal Component (separate for clean design)
+function AddAuthorModal({ onClose, onAuthorCreated }) {
+  const [authorData, setAuthorData] = useState({
+    penName: '',
+    bio: ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!authorData.penName.trim()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onAuthorCreated(authorData);
+      onClose();
+    } catch (error) {
+      console.error('Error creating author:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Add New Author</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="p-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pen Name *
+              </label>
+              <input
+                type="text"
+                value={authorData.penName}
+                onChange={(e) => setAuthorData({ ...authorData, penName: e.target.value })}
+                placeholder="Enter author pen name"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Bio
+              </label>
+              <textarea
+                value={authorData.bio}
+                onChange={(e) => setAuthorData({ ...authorData, bio: e.target.value })}
+                placeholder="Enter author bio (optional)"
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !authorData.penName.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center"
+            >
+              {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Create Author
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

@@ -28,7 +28,7 @@ export const getImageUrl = (imagePath, imageType = 'images') => {
   
   // Use the backend uploads route to serve images (NOT /api/uploads/)
   // Images are served directly from /uploads, not through /api
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
   // Ensure we don't have /api in the base URL for images
   const cleanBaseUrl = baseUrl.replace('/api', '');
   

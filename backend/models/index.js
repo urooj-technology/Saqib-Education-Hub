@@ -2,20 +2,34 @@ const User = require('./User');
 const Author = require('./Author');
 const Book = require('./Book');
 const BookAuthor = require('./BookAuthor');
+const BookCategory = require('./BookCategory');
 const Article = require('./Article');
 const ArticleAuthor = require('./ArticleAuthor');
+const ArticleCategory = require('./ArticleCategory');
 const Video = require('./Video');
 const Province = require('./Province');
 const Company = require('./Company');
 const Job = require('./Job');
+const JobCategory = require('./JobCategory');
 const Scholarship = require('./Scholarship');
 const SubscriptionPlan = require('./SubscriptionPlan');
 const UserSubscription = require('./UserSubscription');
+const Contact = require('./Contact');
 
 // Define associations
 // User-Author relationship (one-to-one)
 User.hasOne(Author, { as: 'authorProfile', foreignKey: 'userId' });
 Author.belongsTo(User, { as: 'user', foreignKey: 'userId' });
+
+// Category relationships
+BookCategory.hasMany(Book, { as: 'books', foreignKey: 'categoryId' });
+Book.belongsTo(BookCategory, { as: 'category', foreignKey: 'categoryId' });
+
+ArticleCategory.hasMany(Article, { as: 'articles', foreignKey: 'categoryId' });
+Article.belongsTo(ArticleCategory, { as: 'category', foreignKey: 'categoryId' });
+
+JobCategory.hasMany(Job, { as: 'jobs', foreignKey: 'categoryId' });
+Job.belongsTo(JobCategory, { as: 'category', foreignKey: 'categoryId' });
 
 // Many-to-many relationships through junction tables
 Author.belongsToMany(Book, { through: BookAuthor, as: 'books', foreignKey: 'authorId' });
@@ -62,13 +76,17 @@ module.exports = {
   Author,
   Book,
   BookAuthor,
+  BookCategory,
   Article,
   ArticleAuthor,
+  ArticleCategory,
   Video,
   Province,
   Company,
   Job,
+  JobCategory,
   Scholarship,
   SubscriptionPlan,
-  UserSubscription
+  UserSubscription,
+  Contact
 };

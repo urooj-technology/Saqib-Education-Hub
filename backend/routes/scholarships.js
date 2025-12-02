@@ -10,12 +10,11 @@ const {
   getFeaturedScholarships,
   getScholarshipsByCategory,
   searchScholarships,
-  getScholarshipStats,
-  incrementScholarshipView
+  getScholarshipStats
 } = require('../controllers/scholarshipController');
 
 const { protect, authorize, optionalAuth } = require('../middleware/auth');
-const { validateScholarship } = require('../middleware/validation');
+// Validation middleware removed - no validation for scholarships
 const { upload } = require('../middleware/upload');
 
 // Public routes (with optional authentication for admin features)
@@ -24,22 +23,20 @@ router.get('/featured', getFeaturedScholarships);
 router.get('/category/:category', getScholarshipsByCategory);
 router.get('/search', searchScholarships);
 router.get('/:id', getScholarshipById);
-router.post('/:id/view', incrementScholarshipView);
+// View increment route removed - viewCount field no longer exists
 
 // Protected routes (Admin/Moderator)
 router.post('/', 
   protect, 
-  authorize('admin', 'moderator'), 
-  upload.single('logo'), 
-  validateScholarship, 
+  authorize('admin', 'moderator'),
+  upload.none(), // Parse FormData fields without files
   createScholarship
 );
 
 router.put('/:id', 
   protect, 
-  authorize('admin', 'moderator'), 
-  upload.single('logo'), 
-  validateScholarship, 
+  authorize('admin', 'moderator'),
+  upload.none(), // Parse FormData fields without files
   updateScholarship
 );
 

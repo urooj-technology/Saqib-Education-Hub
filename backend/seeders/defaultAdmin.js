@@ -23,7 +23,7 @@ const createDefaultAdmin = async () => {
       lastName: 'Administrator',
       email: 'admin@gmail.com',
       password: 'Admin@123', // This will be hashed by the model hook
-      phone: '+1234567890',
+      phone: '+93 (0) 765638741',
       role: 'admin',
       status: 'active',
       emailVerified: true

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Search, Filter, Clock, User, Calendar, BookOpen, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import Layout from '../../components/Layout';
-import useFetchObjects from '../../api/useFetchObjects';
+import useFetchObjects from '@/api/useFetchObjects';
 import { getBookCoverUrl } from '../../utils/imageUtils';
 
 // Import translations
@@ -20,24 +20,7 @@ const translations = {
 };
 
 
-const categories = [
-  "All Categories",
-  "Mathematics",
-  "Computer Science", 
-  "Physics",
-  "Business",
-  "Medicine",
-  "Environmental Science",
-  "Literature",
-  "History",
-  "Chemistry",
-  "Education",
-  "Technology",
-  "Science",
-  "Engineering",
-  "Arts",
-  "Social Sciences"
-];
+// Categories will be fetched dynamically from the API
 
 const languages = [
   "All Languages",
@@ -76,7 +59,30 @@ export default function Books() {
   const [currentLang, setCurrentLang] = useState('en');
   const [currentTranslations, setCurrentTranslations] = useState(translations.en);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
+
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(0);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
+  // Fetch book categories dynamically
+  const { data: categoriesData, loading: categoriesLoading } = useFetchObjects(
+    "book-categories",
+    "book-categories?limit=1000"
+  );
+  const bookCategories = categoriesData?.data?.categories || [];
+  const categories = ["All Categories", ...bookCategories.map(cat => cat.name)];
   const [selectedLanguage, setSelectedLanguage] = useState('All Languages');
   const [selectedFormat, setSelectedFormat] = useState('All Formats');
   const [minPrice, setMinPrice] = useState('');
@@ -88,14 +94,15 @@ export default function Books() {
   const [showFilters, setShowFilters] = useState(false);
 
   // Fetch books from backend with pagination and search (no authentication required for public access)
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: fetchedBooks,
     isLoading: loading,
     isError: error,
     refetch
   } = useFetchObjects(
-    ["books", searchTerm, selectedCategory, selectedLanguage, selectedFormat, minPrice, maxPrice, sortBy, sortOrder, page, rowPerPage],
-    `books/?search=${encodeURIComponent(searchTerm)}&category=${selectedCategory !== 'All Categories' ? selectedCategory : ''}&language=${selectedLanguage !== 'All Languages' ? selectedLanguage : ''}&format=${selectedFormat !== 'All Formats' ? selectedFormat : ''}&minPrice=${minPrice}&maxPrice=${maxPrice}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
+    ["books", debouncedSearchTerm, selectedCategory, selectedLanguage, selectedFormat, minPrice, maxPrice, sortBy, sortOrder, page, rowPerPage],
+    `books/?search=${encodeURIComponent(debouncedSearchTerm)}&category=${selectedCategory !== 'All Categories' ? selectedCategory : ''}&language=${selectedLanguage !== 'All Languages' ? selectedLanguage : ''}&format=${selectedFormat !== 'All Formats' ? selectedFormat : ''}&minPrice=${minPrice}&maxPrice=${maxPrice}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
     null // No token needed for public access
   );
 
@@ -110,33 +117,8 @@ export default function Books() {
     setCurrentTranslations(translations[savedLang] || translations.en);
   }, []);
 
-  // Use real API data if available
+  // Use real API data - backend already handles filtering, sorting, and pagination
   const books = fetchedBooks?.data?.books || [];
-  
-  const filteredBooks = books.filter(book => {
-    const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (book.authors && book.authors.length > 0 && book.authors[0].penName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                         book.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'All Categories' || book.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-  const sortedBooks = [...filteredBooks].sort((a, b) => {
-    switch (sortBy) {
-      case 'title':
-        return a.title.localeCompare(b.title);
-      case 'author':
-        const authorA = a.authors && a.authors.length > 0 ? a.authors[0].penName || a.authors[0].firstName || 'Unknown' : 'Unknown';
-        const authorB = b.authors && b.authors.length > 0 ? b.authors[0].penName || b.authors[0].firstName || 'Unknown' : 'Unknown';
-        return authorA.localeCompare(authorB);
-      case 'downloads':
-        return (b.downloadCount || 0) - (a.downloadCount || 0);
-      case 'publishedAt':
-        return new Date(b.publicationYear || b.createdAt) - new Date(a.publicationYear || a.createdAt);
-      default:
-        return 0;
-    }
-  });
 
   const openBookDetails = (book) => {
     setSelectedBook(book);
@@ -145,6 +127,12 @@ export default function Books() {
 
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {loading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -162,37 +150,38 @@ export default function Books() {
       {/* Search and Filters */}
       <section className="py-8 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
             {/* Search */}
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 <input
                   type="text"
                   placeholder={currentTranslations['books.search.placeholder'] || 'Search books, authors, or subjects...'}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-9 sm:pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base"
                 />
               </div>
             </div>
 
             {/* Filters */}
-            <div className="flex gap-4">
+            <div className="flex gap-2 sm:gap-4">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center px-4 py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50"
+                className="inline-flex items-center px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm sm:text-base"
               >
-                <Filter className="w-5 h-5 mr-2" />
-                Filters
+                <Filter className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Filters</span>
+                <span className="sm:hidden">Filter</span>
               </button>
             </div>
           </div>
 
           {/* Advanced Filters */}
           {showFilters && (
-            <div className="mt-6 bg-white p-6 rounded-lg border border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="mt-4 sm:mt-6 bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <select
@@ -246,7 +235,7 @@ export default function Books() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Min Price</label>
                   <input
@@ -268,7 +257,6 @@ export default function Books() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-
               </div>
             </div>
           )}
@@ -310,24 +298,23 @@ export default function Books() {
           {/* Books Grid - Card Format */}
           {!loading && !error && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {sortedBooks.map((book) => (
+              {books.map((book) => (
               <div key={book.id} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200 group">
                 {/* Book Cover */}
                 <div className="relative aspect-[3/4]">
-                  {book.coverImage ? (
-                    <Image
-                      src={getBookCoverUrl(book.coverImage)}
+                  {book.coverImageUrl ? (
+                    <img
+                      src={book.coverImageUrl}
                       alt={book.title}
-                      width={200}
-                      height={250}
                       className="w-full h-full object-cover"
                       onError={(e) => {
+                        console.error('Failed to load book cover:', book.coverImageUrl);
                         e.target.style.display = 'none';
                         e.target.nextSibling.style.display = 'flex';
                       }}
                     />
                   ) : null}
-                  <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 ${book.coverImage ? 'hidden' : 'flex'}`}>
+                  <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 ${book.coverImageUrl ? 'hidden' : 'flex'}`}>
                     <div className="text-white text-center">
                       <div className="text-2xl font-bold mb-1">📖</div>
                       <div className="text-xs opacity-90">Digital Book</div>
@@ -361,7 +348,7 @@ export default function Books() {
                     <User className="w-3 h-3 text-gray-400 mr-1" />
                     <span className="text-xs text-gray-700 truncate">
                       {book.authors && book.authors.length > 0 
-                        ? book.authors[0].penName || book.authors[0].firstName || 'Unknown Author'
+                        ? book.authors.map(author => author.penName || author.firstName).join(', ') || 'Unknown Author'
                         : 'No Author'
                       }
                     </span>
@@ -394,7 +381,7 @@ export default function Books() {
           )}
 
           {/* No Books Found */}
-          {!loading && !error && sortedBooks.length === 0 && (
+          {!loading && !error && books.length === 0 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📚</div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">No books found</h3>
@@ -466,20 +453,19 @@ export default function Books() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Book Cover */}
                 <div className="relative">
-                  {selectedBook.coverImage ? (
-                    <Image
-                      src={getBookCoverUrl(selectedBook.coverImage)}
+                  {selectedBook.coverImageUrl ? (
+                    <img
+                      src={selectedBook.coverImageUrl}
                       alt={selectedBook.title}
-                      width={300}
-                      height={400}
                       className="w-full h-96 object-cover rounded-lg"
                       onError={(e) => {
+                        console.error('Failed to load modal book cover:', selectedBook.coverImageUrl);
                         e.target.style.display = 'none';
                         e.target.nextSibling.style.display = 'flex';
                       }}
                     />
                   ) : null}
-                  <div className={`w-full h-96 flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg ${selectedBook.coverImage ? 'hidden' : 'flex'}`}>
+                  <div className={`w-full h-96 flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg ${selectedBook.coverImageUrl ? 'hidden' : 'flex'}`}>
                     <div className="text-white text-center">
                       <div className="text-6xl font-bold mb-2">📖</div>
                       <div className="text-lg opacity-90">Digital Book</div>
@@ -527,18 +513,33 @@ export default function Books() {
                       </div>
                     </div>
 
-                    {selectedBook.tags && selectedBook.tags.length > 0 && (
+                    {selectedBook.tags && (
                       <div>
                         <h4 className="font-medium text-gray-900 mb-2">Tags</h4>
                         <div className="flex flex-wrap gap-2">
-                          {selectedBook.tags.map((tag, index) => (
-                            <span
-                              key={index}
-                              className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs"
-                            >
-                              {tag}
-                            </span>
-                          ))}
+                          {(() => {
+                            // Handle tags whether they come as array or JSON string
+                            let tagsArray = [];
+                            if (Array.isArray(selectedBook.tags)) {
+                              tagsArray = selectedBook.tags;
+                            } else if (typeof selectedBook.tags === 'string') {
+                              try {
+                                tagsArray = JSON.parse(selectedBook.tags);
+                              } catch (e) {
+                                console.warn('Failed to parse tags as JSON:', selectedBook.tags);
+                                tagsArray = selectedBook.tags.split(',').map(tag => tag.trim());
+                              }
+                            }
+                            
+                            return tagsArray.length > 0 ? tagsArray.map((tag, index) => (
+                              <span
+                                key={index}
+                                className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs"
+                              >
+                                {tag}
+                              </span>
+                            )) : null;
+                          })()}
                         </div>
                       </div>
                     )}

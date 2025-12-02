@@ -49,12 +49,14 @@ const Book = sequelize.define('Book', {
     allowNull: false,
     defaultValue: 'English'
   },
-  category: {
-    type: DataTypes.STRING(100),
+  categoryId: {
+    type: DataTypes.INTEGER,
     allowNull: false,
-    validate: {
-      notEmpty: true
-    }
+    references: {
+      model: 'book_categories',
+      key: 'id'
+    },
+    field: 'category_id'
   },
   format: {
     type: DataTypes.ENUM('pdf', 'epub', 'mobi', 'docx', 'txt', 'html'),
@@ -92,26 +94,21 @@ const Book = sequelize.define('Book', {
     defaultValue: 'draft',
     allowNull: false
   },
-  rating: {
-    type: DataTypes.DECIMAL(3, 2),
-    defaultValue: 0.00,
-    validate: {
-      min: 0,
-      max: 5
-    }
-  },
-  ratingCount: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    validate: {
-      min: 0
-    }
-  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
     allowNull: false,
-    field: 'isActive'
+    field: 'is_active'
+  },
+  featured: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
+  },
+  tags: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
   }
 }, {
   tableName: 'books',
@@ -121,16 +118,34 @@ const Book = sequelize.define('Book', {
       fields: ['title']
     },
     {
-      fields: ['category']
+      fields: ['category_id']
     },
     {
       fields: ['status']
     },
     {
-      fields: ['rating']
+      fields: ['is_active']
     },
     {
-      fields: ['isActive']
+      fields: ['language']
+    },
+    {
+      fields: ['format']
+    },
+    {
+      fields: ['price']
+    },
+    {
+      fields: ['featured']
+    },
+    {
+      fields: ['status', 'is_active']
+    },
+    {
+      fields: ['category_id', 'status']
+    },
+    {
+      fields: ['language', 'status']
     }
   ]
 });
@@ -138,16 +153,16 @@ const Book = sequelize.define('Book', {
 // Instance methods
 
 
-Book.prototype.updateRating = async function(newRating) {
-  const totalRating = (this.rating * this.ratingCount) + newRating;
-  this.ratingCount += 1;
-  this.rating = totalRating / this.ratingCount;
-  return await this.save();
-};
 
 // Class methods
-Book.findByCategory = function(category) {
-  return this.findAll({ where: { category, status: 'published', isActive: true } });
+Book.findByCategory = function(categoryId) {
+  return this.findAll({ 
+    where: { categoryId, status: 'published', isActive: true },
+    include: [{
+      model: require('./BookCategory'),
+      as: 'category'
+    }]
+  });
 };
 
 Book.findByAuthor = function(authorId) {
@@ -186,7 +201,7 @@ Book.search = function(query) {
       status: 'published',
       isActive: true
     },
-    order: [['rating', 'DESC'], ['createdAt', 'DESC']]
+    order: [['createdAt', 'DESC']]
   });
 };
 

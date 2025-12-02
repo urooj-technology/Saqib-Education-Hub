@@ -164,7 +164,7 @@ export default function EditUser() {
     }
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/users/${userId}` 
         : `${baseUrl}/api/users/${userId}`;

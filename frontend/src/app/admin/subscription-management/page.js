@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '../../../components/AdminLayout';
 import { useAdminSubscription } from '../../../api/useSubscription';
+import { toast } from 'react-toastify';
 
 export default function SubscriptionManagement() {
   const [plans, setPlans] = useState([]);
@@ -57,7 +58,9 @@ export default function SubscriptionManagement() {
         const normalizedPlans = plansData.map(plan => ({
           ...plan,
           features: Array.isArray(plan.features) ? plan.features : 
-                   (typeof plan.features === 'string' ? [plan.features] : [])
+                   (typeof plan.features === 'string' ? 
+                     (plan.features.startsWith('[') ? JSON.parse(plan.features) : [plan.features]) 
+                     : [])
         }));
         
         setPlans(normalizedPlans);
@@ -76,7 +79,9 @@ export default function SubscriptionManagement() {
     setEditingPlan({ 
       ...plan, 
       features: Array.isArray(plan.features) ? plan.features : 
-               (typeof plan.features === 'string' ? [plan.features] : [])
+               (typeof plan.features === 'string' ? 
+                 (plan.features.startsWith('[') ? JSON.parse(plan.features) : [plan.features]) 
+                 : [])
     });
   };
 
@@ -88,10 +93,16 @@ export default function SubscriptionManagement() {
         plan.id === planId ? response.data.plan : plan
       ));
       setEditingPlan(null);
-      alert('Plan updated successfully!');
+      toast.success('Plan updated successfully!', {
+        position: "top-right",
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error('Error updating plan:', error);
-      alert(`Failed to update plan: ${error.message || 'Please try again.'}`);
+      toast.error(`Failed to update plan: ${error.message || 'Please try again.'}`, {
+        position: "top-right",
+        autoClose: 4000,
+      });
     } finally {
       setLoading(false);
     }
@@ -117,25 +128,40 @@ export default function SubscriptionManagement() {
         isActive: true
       });
       setShowAddPlan(false);
-      alert('Plan created successfully!');
+      toast.success('Plan created successfully!', {
+        position: "top-right",
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error('Error creating plan:', error);
-      alert(`Failed to create plan: ${error.message || 'Please try again.'}`);
+      toast.error(`Failed to create plan: ${error.message || 'Please try again.'}`, {
+        position: "top-right",
+        autoClose: 4000,
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeletePlan = async (planId) => {
-    if (confirm('Are you sure you want to delete this plan?')) {
+    // Show confirmation toast
+    const confirmDelete = window.confirm('Are you sure you want to delete this plan? This action cannot be undone.');
+    
+    if (confirmDelete) {
       try {
         setLoading(true);
         await deletePlan(planId);
         setPlans(prev => prev.filter(plan => plan.id !== planId));
-        alert('Plan deleted successfully!');
+        toast.success('Plan deleted successfully!', {
+          position: "top-right",
+          autoClose: 3000,
+        });
       } catch (error) {
         console.error('Error deleting plan:', error);
-        alert(`Failed to delete plan: ${error.message || 'Please try again.'}`);
+        toast.error(`Failed to delete plan: ${error.message || 'Please try again.'}`, {
+          position: "top-right",
+          autoClose: 4000,
+        });
       } finally {
         setLoading(false);
       }

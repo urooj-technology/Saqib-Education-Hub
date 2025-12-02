@@ -20,29 +20,38 @@ import {
   Loader2,
   AlertCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CheckCircle,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import AdminLayout from '../../../components/AdminLayout';
 import Link from 'next/link';
+import { useAuth } from '../../../context/AuthContext';
 import useFetchObjects from '../../../api/useFetchObjects';
+import useDelete from '../../../api/useDelete';
+import { toast } from 'react-toastify';
 
-const categories = ['All', 'Technology', 'Education', 'Data Science', 'Marketing', 'Research', 'Healthcare', 'Finance', 'Sales'];
 const types = ['All', 'full-time', 'part-time', 'contract', 'internship'];
-const statuses = ['All', 'active', 'expired', 'draft', 'closed', 'pending', 'filled'];
-const experienceLevels = ['All', 'entry', 'junior', 'mid-level', 'senior', 'lead', 'executive'];
+const statuses = ['All', 'active', 'draft', 'closed', 'expired'];
+const sortOptions = [
+  { value: 'createdAt', label: 'Created Date' },
+  { value: 'title', label: 'Job Title' },
+  { value: 'closing_date', label: 'Deadline' },
+  { value: 'status', label: 'Status' },
+  { value: 'applicationCount', label: 'Applications' }
+];
 
 export default function JobsList() {
-  // Get token from localStorage
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const auth = useAuth();
+  const token = auth.token;
   
   // State variables - must be declared before useFetchObjects
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedType, setSelectedType] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
-  const [minSalary, setMinSalary] = useState('');
-  const [maxSalary, setMaxSalary] = useState('');
-  const [experience, setExperience] = useState('All');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('DESC');
   const [showFilters, setShowFilters] = useState(false);
@@ -51,32 +60,45 @@ export default function JobsList() {
   const [page, setPage] = useState(0);
   const [rowPerPage, setRowPerPage] = useState(10);
 
+  // Debounce search term to prevent excessive API calls and re-renders
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setPage(0); // Reset to first page when search changes
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // Ensure all state variables are properly initialized before using them
-  const safeSearchTerm = searchTerm || '';
+  const safeSearchTerm = debouncedSearchTerm || '';
   const safeSelectedCategory = selectedCategory || 'All';
   const safeSelectedType = selectedType || 'All';
   const safeSelectedStatus = selectedStatus || 'All';
-  const safeMinSalary = minSalary || '';
-  const safeMaxSalary = maxSalary || '';
-  const safeExperience = experience || 'All';
   const safeSortBy = sortBy || 'createdAt';
   const safeSortOrder = sortOrder || 'DESC';
 
   // Fetch jobs data from API with pagination and filters
   // For admin access, we want to show ALL jobs regardless of status
   const { data: jobsData, isLoading, isError, error, refetch } = useFetchObjects(
-    ['admin-jobs', safeSearchTerm, safeSelectedCategory, safeSelectedType, safeSelectedStatus, safeMinSalary, safeMaxSalary, safeExperience, safeSortBy, page, rowPerPage],
-    `jobs/?search=${encodeURIComponent(safeSearchTerm)}&category=${safeSelectedCategory !== 'All' ? safeSelectedCategory : ''}&type=${safeSelectedType !== 'All' ? safeSelectedType : ''}&status=${safeSelectedStatus !== 'All' ? safeSelectedStatus : 'all'}&minSalary=${safeMinSalary}&maxSalary=${safeMaxSalary}&experience=${safeExperience !== 'All' ? safeExperience : ''}&sortBy=${safeSortBy}&sortOrder=${safeSortOrder}&page=${page + 1}&limit=${rowPerPage}`,
+    ['admin-jobs', safeSearchTerm, safeSelectedCategory, safeSelectedType, safeSelectedStatus, safeSortBy, page, rowPerPage],
+    `jobs/?search=${encodeURIComponent(safeSearchTerm)}&category=${safeSelectedCategory !== 'All' ? safeSelectedCategory : ''}&type=${safeSelectedType !== 'All' ? safeSelectedType : ''}&status=${safeSelectedStatus !== 'All' ? safeSelectedStatus : 'all'}&sortBy=${safeSortBy}&sortOrder=${safeSortOrder}&page=${page + 1}&limit=${rowPerPage}`,
     token
   );
+
+  // Fetch categories data from API
+  const { data: categoriesData } = useFetchObjects('job-categories', 'job-categories', token);
+
+  // Create dynamic categories array with 'All' plus fetched categories
+  const categories = ['All', ...(categoriesData?.data?.categories?.map(cat => cat.name) || [])];
 
   // Extract pagination info from API response
   const pagination = jobsData?.data?.pagination || {};
   const totalPages = pagination.totalPages || 1;
   const totalItems = pagination.totalItems || 0;
   
-  // Delete functionality
-  const [deleteLoading, setDeleteLoading] = useState(false);
+  // Use the useDelete hook for clean delete functionality
+  const { handleDelete, ConfirmDialog } = useDelete('jobs', token);
 
   // Use backend paginated data directly - no client-side filtering needed
   const jobs = jobsData?.data?.jobs || [];
@@ -91,37 +113,10 @@ export default function JobsList() {
     rowPerPage
   });
 
-  const handleDelete = async (jobId) => {
-    if (confirm('Are you sure you want to delete this job posting? This action cannot be undone.')) {
-      setDeleteLoading(true);
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
-        const apiUrl = baseUrl.endsWith('/api') 
-          ? `${baseUrl}/jobs/${jobId}` 
-          : `${baseUrl}/api/jobs/${jobId}`;
-        
-        const response = await fetch(apiUrl, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Token ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          alert('Job deleted successfully!');
-          refetch(); // Refresh the data after deletion
-        } else {
-          const errorData = await response.json();
-          alert(`Failed to delete job: ${errorData.message || 'Unknown error'}`);
-        }
-      } catch (error) {
-        console.error('Error deleting job:', error);
-        alert('Failed to delete job. Please try again.');
-      } finally {
-        setDeleteLoading(false);
-      }
-    }
+  // Handle delete with the clean delete hook
+  const handleDeleteJob = (jobId) => {
+    handleDelete(jobId);
+    // The useDelete hook handles everything: confirmation, API call, and query invalidation
   };
 
   const handleStatusChange = async (jobId, newStatus) => {
@@ -131,6 +126,32 @@ export default function JobsList() {
       refetch();
     } catch (error) {
       console.error('Error updating job status:', error);
+    }
+  };
+
+  const toggleStatus = async (jobId) => {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/jobs/${jobId}/toggle-status` 
+        : `${baseUrl}/api/jobs/${jobId}/toggle-status`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        console.log('Job status toggled successfully');
+        refetch(); // Refresh the jobs list
+      } else {
+        console.error('Failed to toggle job status');
+      }
+    } catch (error) {
+      console.error('Error toggling job status:', error);
     }
   };
 
@@ -167,9 +188,10 @@ export default function JobsList() {
   };
 
   const getCategoryBadge = (category) => {
+    const categoryName = typeof category === 'object' ? category.name : category;
     return (
       <span className="px-2 py-1 text-xs font-medium bg-indigo-100 text-indigo-800 rounded-full">
-        {category}
+        {categoryName}
       </span>
     );
   };
@@ -201,8 +223,8 @@ export default function JobsList() {
     return `${diffDays} days left`;
   };
 
-  // Show loading state
-  if (isLoading) {
+  // Show loading state only for initial load, not for search/filter changes
+  if (isLoading && !searchTerm && !selectedCategory && !selectedType && !selectedStatus) {
     return (
       <AdminLayout title="Jobs Management">
         <div className="flex items-center justify-center py-12">
@@ -283,16 +305,19 @@ export default function JobsList() {
             </button>
           </div>
 
-          {/* Filters */}
+          {/* Professional Filters */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Tag className="w-4 h-4 inline mr-1" />
+                    Category
+                  </label>
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                   >
                     {categories.map(category => (
                       <option key={category} value={category}>{category}</option>
@@ -301,93 +326,104 @@ export default function JobsList() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Briefcase className="w-4 h-4 inline mr-1" />
+                    Job Type
+                  </label>
                   <select
                     value={selectedType}
                     onChange={(e) => setSelectedType(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                   >
                     {types.map(type => (
-                      <option key={type} value={type}>{type}</option>
+                      <option key={type} value={type}>
+                        {type === 'All' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' ')}
+                      </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <CheckCircle className="w-4 h-4 inline mr-1" />
+                    Status
+                  </label>
                   <select
                     value={selectedStatus}
                     onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                   >
                     {statuses.map(status => (
-                      <option key={status} value={status}>{status}</option>
+                      <option key={status} value={status}>
+                        {status === 'All' ? 'All Statuses' : status.charAt(0).toUpperCase() + status.slice(1)}
+                      </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Experience</label>
-                  <select
-                    value={experience}
-                    onChange={(e) => setExperience(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  >
-                    {experienceLevels.map(level => (
-                      <option key={level} value={level}>{level}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Min Salary</label>
-                  <input
-                    type="number"
-                    value={minSalary}
-                    onChange={(e) => setMinSalary(e.target.value)}
-                    placeholder="0"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Max Salary</label>
-                  <input
-                    type="number"
-                    value={maxSalary}
-                    onChange={(e) => setMaxSalary(e.target.value)}
-                    placeholder="100000"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Clock className="w-4 h-4 inline mr-1" />
+                    Sort By
+                  </label>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                   >
-                    <option value="createdAt">Created Date</option>
-                    <option value="title">Title</option>
-                    <option value="salary">Salary</option>
-                    <option value="deadline">Deadline</option>
+                    {sortOptions.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Order</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <span className="w-4 h-4 inline mr-1">↕️</span>
+                    Order
+                  </label>
                   <select
                     value={sortOrder}
                     onChange={(e) => setSortOrder(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                   >
-                    <option value="DESC">Descending</option>
-                    <option value="ASC">Ascending</option>
+                    <option value="DESC">Newest First</option>
+                    <option value="ASC">Oldest First</option>
                   </select>
                 </div>
+              </div>
+              
+              {/* Quick Filter Actions */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    setSelectedCategory('All');
+                    setSelectedType('All');
+                    setSelectedStatus('All');
+                    setSearchTerm('');
+                  }}
+                  className="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Clear All Filters
+                </button>
+                <button
+                  onClick={() => setSelectedStatus('active')}
+                  className="px-3 py-1.5 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                >
+                  Active Jobs Only
+                </button>
+                <button
+                  onClick={() => setSelectedStatus('draft')}
+                  className="px-3 py-1.5 text-xs bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors"
+                >
+                  Drafts Only
+                </button>
+                <button
+                  onClick={() => setSelectedStatus('expired')}
+                  className="px-3 py-1.5 text-xs bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                >
+                  Expired Jobs
+                </button>
               </div>
             </div>
           )}
@@ -398,6 +434,12 @@ export default function JobsList() {
           <p className="text-sm text-gray-600">
             Showing {jobs.length} of {totalItems} jobs
           </p>
+          {isLoading && (searchTerm || selectedCategory !== 'All' || selectedType !== 'All' || selectedStatus !== 'All') && (
+            <div className="flex items-center text-sm text-indigo-600">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              Searching...
+            </div>
+          )}
         </div>
 
         {/* Jobs Table */}
@@ -513,8 +555,8 @@ export default function JobsList() {
                       {formatDate(job.createdAt)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className={`text-sm ${isExpired(job.deadline) ? 'text-red-600' : 'text-gray-900'}`}>
-                        {getDaysLeft(job.deadline)}
+                      <div className={`text-sm ${isExpired(job.closing_date) ? 'text-red-600' : 'text-gray-900'}`}>
+                        {getDaysLeft(job.closing_date)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -540,16 +582,26 @@ export default function JobsList() {
                           <Edit className="w-4 h-4" />
                         </Link>
                         <button
-                          onClick={() => handleDelete(job.id)}
-                          disabled={deleteLoading}
-                          className="text-red-600 hover:text-red-900 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => toggleStatus(job.id)}
+                          className={`p-1 rounded transition-colors ${
+                            job.status === 'active' 
+                              ? 'text-green-600 hover:text-green-900' 
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                          title={job.status === 'active' ? 'Click to deactivate' : 'Click to activate'}
+                        >
+                          {job.status === 'active' ? (
+                            <ToggleRight className="w-4 h-4" />
+                          ) : (
+                            <ToggleLeft className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteJob(job.id)}
+                          className="text-red-600 hover:text-red-900 p-1 rounded"
                           title="Delete Job"
                         >
-                          {deleteLoading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -669,6 +721,9 @@ export default function JobsList() {
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

@@ -105,7 +105,7 @@ export default function PostJob() {
   const checkBackendHealth = async () => {
     try {
       console.log('Checking backend health...');
-      const response = await fetch('https://api.saqibeduhub.com/health');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/health`);
       console.log('Health check response:', response.status, response.ok);
       
       if (response.ok) {
@@ -130,7 +130,7 @@ export default function PostJob() {
       setSubscriptionLoading(true);
       setSubscriptionError(null);
       
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/subscriptions/plans` 
         : `${baseUrl}/api/subscriptions/plans`;
@@ -166,7 +166,7 @@ export default function PostJob() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/subscriptions/my-subscription` 
         : `${baseUrl}/api/subscriptions/my-subscription`;
@@ -242,7 +242,7 @@ export default function PostJob() {
         return;
       }
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/jobs` 
         : `${baseUrl}/api/jobs`;

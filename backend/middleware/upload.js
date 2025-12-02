@@ -11,7 +11,7 @@ if (!fs.existsSync(uploadsDir)) {
 
 // Create subdirectories for different file types
 const createUploadDirs = () => {
-  const dirs = ['images', 'documents', 'videos', 'books', 'article', 'companies'];
+  const dirs = ['images', 'documents', 'videos', 'books', 'article', 'companies', 'temp', 'chunks'];
   dirs.forEach(dir => {
     const dirPath = path.join(uploadsDir, dir);
     if (!fs.existsSync(dirPath)) {
@@ -42,6 +42,12 @@ const storage = multer.diskStorage({
       uploadPath = path.join(uploadsDir, 'videos');
     } else if (file.fieldname === 'companyLogo') {
       uploadPath = path.join(uploadsDir, 'companies');
+    } else if (file.fieldname === 'chunk') {
+      // For chunked uploads, use a temporary directory
+      uploadPath = path.join(uploadsDir, 'temp');
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
     } else {
       uploadPath = path.join(uploadsDir, 'documents');
     }
@@ -122,6 +128,10 @@ const fileFilter = (req, file, cb) => {
     case 'documentAttachment':
       allowedTypes = allowedDocumentTypes;
       break;
+    case 'chunk':
+      // For chunked uploads, allow all file types since chunks are binary data
+      allowedTypes = ['application/octet-stream', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/plain', 'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/flv', 'video/webm'];
+      break;
     default:
       allowedTypes = [...allowedImageTypes, ...allowedDocumentTypes, ...allowedBookTypes, ...allowedVideoTypes];
   }
@@ -177,7 +187,9 @@ const deleteFile = (filePath) => {
 const getFileUrl = (filePath, req) => {
   if (!filePath) return null;
   
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  // Always use HTTPS for production, check for HTTPS header in development
+  const protocol = (process.env.NODE_ENV === 'production' || req.get('x-forwarded-proto') === 'https') ? 'https' : 'http';
+  const baseUrl = `${protocol}://${req.get('host')}`;
   const relativePath = filePath.replace(path.join(__dirname, '..'), '');
   return `${baseUrl}${relativePath.replace(/\\/g, '/')}`;
 };
@@ -200,25 +212,121 @@ const validateImageDimensions = (filePath, minWidth = 100, minHeight = 100) => {
   });
 };
 
-// Helper function to resize image
-const resizeImage = async (filePath, width = 800, height = 600, quality = 80) => {
+// Enhanced helper function to compress and resize image with aggressive optimization
+const compressImage = async (filePath, options = {}) => {
   try {
     const sharp = require('sharp');
-    const resizedPath = filePath.replace(/(\.[^.]+)$/, '-resized$1');
+    const {
+      maxWidth = 800,
+      maxHeight = 800,
+      quality = 70,
+      format = 'webp',
+      progressive = true,
+      mozjpeg = true,
+      compressionLevel = 8,
+      effort = 6
+    } = options;
+
+    // Get image metadata
+    const metadata = await sharp(filePath).metadata();
     
-    await sharp(filePath)
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality })
-      .toFile(resizedPath);
+    // Only compress if it's an image and larger than our target
+    if (!metadata.width || !metadata.height) {
+      return filePath;
+    }
+
+    // Calculate new dimensions with more aggressive sizing
+    let { width, height } = metadata;
+    const aspectRatio = width / height;
+
+    if (width > maxWidth || height > maxHeight) {
+      if (aspectRatio > 1) {
+        width = maxWidth;
+        height = Math.round(maxWidth / aspectRatio);
+      } else {
+        height = maxHeight;
+        width = Math.round(maxHeight * aspectRatio);
+      }
+    }
+
+    // Always process for aggressive compression
+    const compressedPath = filePath.replace(/(\.[^.]+)$/, '-compressed$1');
     
-    // Delete original file
+    let sharpInstance = sharp(filePath)
+      .resize(width, height, { 
+        fit: 'inside', 
+        withoutEnlargement: true,
+        kernel: sharp.kernel.lanczos3
+      })
+      .sharpen(0.5) // Add slight sharpening to compensate for compression
+      .normalize() // Normalize colors for better compression
+      .gamma(2.2); // Apply gamma correction
+
+    // Apply format-specific optimizations with aggressive settings
+    switch (format.toLowerCase()) {
+      case 'jpeg':
+      case 'jpg':
+        sharpInstance = sharpInstance.jpeg({ 
+          quality: Math.max(quality - 10, 50), // More aggressive quality reduction
+          progressive,
+          mozjpeg,
+          trellisQuantisation: true,
+          overshootDeringing: true,
+          optimizeScans: true
+        });
+        break;
+      case 'png':
+        sharpInstance = sharpInstance.png({ 
+          quality: Math.max(quality - 10, 50),
+          progressive,
+          compressionLevel: Math.max(compressionLevel, 9),
+          effort: effort,
+          adaptiveFiltering: true,
+          palette: true // Enable palette mode for smaller files
+        });
+        break;
+      case 'webp':
+        sharpInstance = sharpInstance.webp({ 
+          quality: Math.max(quality - 5, 45), // WebP can handle lower quality better
+          lossless: false,
+          effort: effort,
+          smartSubsample: true,
+          reductionEffort: 6
+        });
+        break;
+      default:
+        // Fallback to aggressive JPEG compression
+        sharpInstance = sharpInstance.jpeg({ 
+          quality: Math.max(quality - 15, 45),
+          progressive,
+          mozjpeg: true,
+          trellisQuantisation: true
+        });
+    }
+
+    await sharpInstance.toFile(compressedPath);
+    
+    // Get file sizes for comparison
+    const originalSize = fs.statSync(filePath).size;
+    const compressedSize = fs.statSync(compressedPath).size;
+    const compressionRatio = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+    
+    // Delete original file and rename compressed file
     deleteFile(filePath);
+    fs.renameSync(compressedPath, filePath);
     
-    return resizedPath;
+    console.log(`Image aggressively compressed: ${path.basename(filePath)} (${metadata.width}x${metadata.height} -> ${width}x${height}) - ${compressionRatio}% size reduction`);
+    
+    return filePath;
   } catch (error) {
-    console.error('Error resizing image:', error);
+    console.error('Error compressing image:', error);
     return filePath;
   }
+};
+
+// Helper function to resize image (legacy function for backward compatibility)
+const resizeImage = async (filePath, width = 800, height = 600, quality = 80) => {
+  return compressImage(filePath, { maxWidth: width, maxHeight: height, quality });
 };
 
 module.exports = {
@@ -227,5 +335,6 @@ module.exports = {
   deleteFile,
   getFileUrl,
   validateImageDimensions,
-  resizeImage
+  resizeImage,
+  compressImage
 };

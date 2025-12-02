@@ -16,15 +16,16 @@ import {
   ToggleLeft,
   ToggleRight
 } from 'lucide-react';
-import AdminLayout from '../../../components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout';
 import Link from 'next/link';
-import { useAuth } from '../../../context/AuthContext';
-import useFetchObjects from '../../../api/useFetchObjects';
-import { getBookCoverUrl, getImageFilename } from '../../../utils/imageUtils';
+import { useAuth } from '@/context/AuthContext';
+import useFetchObjects from '@/api/useFetchObjects';
+import useDelete from '@/api/useDelete';
+import { getBookCoverUrl, getImageFilename } from '@/utils/imageUtils';
 
 // Books will be fetched from the backend
 
-const categories = ['All', 'Mathematics', 'Computer Science', 'Physics', 'Chemistry', 'Biology', 'Literature'];
+// Categories will be fetched dynamically from the API
 const languages = ['All', 'English', 'Arabic', 'Pashto', 'Dari'];
 const formats = ['All', 'PDF', 'EPUB', 'DOCX', 'TXT'];
 const statuses = ['All', 'published', 'draft', 'archived'];
@@ -37,6 +38,7 @@ export default function BooksList() {
 
   // State for filters and search
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedLanguage, setSelectedLanguage] = useState('All');
   const [selectedFormat, setSelectedFormat] = useState('All');
@@ -46,20 +48,42 @@ export default function BooksList() {
   const [sortBy, setSortBy] = useState('createdAt');
   const [showFilters, setShowFilters] = useState(false);
 
-   
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(0);
+      }
+    }, 500); // Wait 500ms after user stops typing
 
-  
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
 
-  
+  // Fetch book categories dynamically
+  const { data: categoriesData, loading: categoriesLoading } = useFetchObjects(
+    "book-categories",
+    "book-categories?limit=1000", 
+    token
+  );
+  const bookCategories = categoriesData?.data?.categories || [];
+  const categories = ['All', ...bookCategories.map(cat => cat.name)];
+
+  // Use the useDelete hook for clean delete functionality
+  const { handleDelete, ConfirmDialog } = useDelete('books', token);
+
   // Fetch books from backend with pagination, search, and filters
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: fetchedBooks,
     isLoading: loading,
     isError: error,
     refetch
   } = useFetchObjects(
-    ["books", searchTerm, selectedCategory, selectedLanguage, selectedFormat, selectedStatus, minPrice, maxPrice, sortBy, page, rowPerPage],
-    `books/?search=${encodeURIComponent(searchTerm)}&category=${selectedCategory !== 'All' ? selectedCategory : ''}&language=${selectedLanguage !== 'All' ? selectedLanguage : ''}&format=${selectedFormat !== 'All' ? selectedFormat : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}&minPrice=${minPrice}&maxPrice=${maxPrice}&sortBy=${sortBy}&page=${page + 1}&limit=${rowPerPage}`,
+    ["books", debouncedSearchTerm, selectedCategory, selectedLanguage, selectedFormat, selectedStatus, minPrice, maxPrice, sortBy, page, rowPerPage],
+    `books/?search=${encodeURIComponent(debouncedSearchTerm)}&category=${selectedCategory !== 'All' ? selectedCategory : ''}&language=${selectedLanguage !== 'All' ? selectedLanguage : ''}&format=${selectedFormat !== 'All' ? selectedFormat : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}&minPrice=${minPrice}&maxPrice=${maxPrice}&sortBy=${sortBy}&page=${page + 1}&limit=${rowPerPage}`,
     token
   );
 
@@ -123,15 +147,20 @@ export default function BooksList() {
     rowPerPage
   });
 
-  const handleDelete = (bookId) => {
-    if (confirm('Are you sure you want to delete this book?')) {
-      setBooks(books.filter(book => book.id !== bookId));
-    }
+  // Handle delete with the clean delete hook
+  const handleDeleteBook = (bookId) => {
+    handleDelete(bookId);
+    // The useDelete hook handles everything: confirmation, API call, and query invalidation
   };
 
   const toggleActive = async (bookId) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}/api/books/${bookId}/toggle-active`, {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/books/${bookId}/toggle-active` 
+        : `${baseUrl}/api/books/${bookId}/toggle-active`;
+      
+      const response = await fetch(apiUrl, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -141,11 +170,9 @@ export default function BooksList() {
 
       if (response.ok) {
         const result = await response.json();
-        // Update the book in the local state
-        setBooks(books.map(book => 
-          book.id === bookId ? { ...book, isActive: result.data.book.isActive } : book
-        ));
-        // No need to update local state since we're using backend data directly
+        // Refetch the books data to get the updated state
+        refetch();
+        console.log('Book active status toggled successfully');
       } else {
         console.error('Failed to toggle book active status');
       }
@@ -168,25 +195,6 @@ export default function BooksList() {
     );
   };
 
-  const getRatingStars = (rating) => {
-    return (
-      <div className="flex items-center space-x-1">
-        <span className="text-sm font-medium text-gray-900">{rating}</span>
-        <div className="flex items-center">
-          {[...Array(5)].map((_, i) => (
-            <svg
-              key={i}
-              className={`w-4 h-4 ${i < Math.floor(rating) ? 'text-yellow-400' : 'text-gray-300'}`}
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-            </svg>
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <AdminLayout title="Books Management">
@@ -325,7 +333,6 @@ export default function BooksList() {
                     <option value="createdAt">Created Date</option>
                     <option value="title">Title</option>
                     <option value="price">Price</option>
-                    <option value="rating">Rating</option>
                     <option value="publishedAt">Published Date</option>
                   </select>
                 </div>
@@ -422,11 +429,6 @@ export default function BooksList() {
                       <div className="mt-2 text-xs text-gray-500 space-y-1">
                         <div>Language: {book.language || 'English'}</div>
                         <div>Pages: {book.pages || 0}</div>
-                        <div>Downloads: {book.downloadCount || 0}</div>
-                        <div className="flex items-center">
-                          <span className="mr-1">Rating:</span>
-                          {getRatingStars(parseFloat(book.rating) || 0)}
-                        </div>
                       </div>
                       
                       <div className="mt-3 flex items-center space-x-2">
@@ -443,7 +445,7 @@ export default function BooksList() {
                           <Edit className="w-4 h-4" />
                         </Link>
                         <button
-                          onClick={() => handleDelete(book.id)}
+                          onClick={() => handleDeleteBook(book.id)}
                           className="text-red-600 hover:text-red-900 p-1"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -478,12 +480,6 @@ export default function BooksList() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Downloads
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Rating
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Active
@@ -553,12 +549,6 @@ export default function BooksList() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           {getStatusBadge(book.status)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {book.downloadCount || 0}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getRatingStars(parseFloat(book.rating) || 0)}
-                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
                             onClick={() => toggleActive(book.id)}
@@ -597,7 +587,7 @@ export default function BooksList() {
                               <Edit className="w-4 h-4" />
                             </Link>
                             <button
-                              onClick={() => handleDelete(book.id)}
+                              onClick={() => handleDeleteBook(book.id)}
                               className="text-red-600 hover:text-red-900"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -727,6 +717,9 @@ export default function BooksList() {
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

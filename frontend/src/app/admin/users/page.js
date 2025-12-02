@@ -23,12 +23,14 @@ import AdminLayout from '../../../components/AdminLayout';
 import Link from 'next/link';
 import useFetchObjects from '@/api/useFetchObjects';
 import useUpdate from '@/api/useUpdate';
+import useDelete from '@/api/useDelete';
 import { useAuth } from '../../../context/AuthContext';
 
 export default function UsersList() {
   const [page, setPage] = useState(0);
   const [rowPerPage, setRowPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [selectedRole, setSelectedRole] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [sortBy, setSortBy] = useState('createdAt');
@@ -37,6 +39,20 @@ export default function UsersList() {
   
   const auth = useAuth();
   const token = auth.token;
+
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(0);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
   
   // Use update hook for activating users
   const { handleUpdate: handleUserUpdate, loading: isUpdating } = useUpdate(
@@ -46,8 +62,12 @@ export default function UsersList() {
     'User activated successfully!',
     'Failed to activate user'
   );
+
+  // Use the useDelete hook for clean delete functionality
+  const { handleDelete, ConfirmDialog } = useDelete('users', token);
   
   // Fetch users from backend with pagination, search, and filters
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: usersData,
     isLoading,
@@ -55,8 +75,8 @@ export default function UsersList() {
     error,
     refetch
   } = useFetchObjects(
-    ["users", searchTerm, selectedRole, selectedStatus, sortBy, sortOrder, page, rowPerPage],
-    `users/?search=${encodeURIComponent(searchTerm)}&role=${selectedRole !== 'All' ? selectedRole : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
+    ["users", debouncedSearchTerm, selectedRole, selectedStatus, sortBy, sortOrder, page, rowPerPage],
+    `users/?search=${encodeURIComponent(debouncedSearchTerm)}&role=${selectedRole !== 'All' ? selectedRole : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
     token
   );
 
@@ -123,25 +143,20 @@ export default function UsersList() {
   
   console.log('About to fetch users with token:', token);
 
-  const handleDelete = (userId) => {
-    if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      setUsers(users.filter(user => user.id !== userId));
-    }
+  // Handle delete with the clean delete hook
+  const handleDeleteUser = (userId) => {
+    handleDelete(userId);
+    // The useDelete hook handles everything: confirmation, API call, and query invalidation
   };
 
   const handleStatusChange = (userId, newStatus) => {
-    setUsers(users.map(user => 
-      user.id === userId ? { ...user, status: newStatus } : user
-    ));
+    // No need for local state update since we use refetch
+    console.log(`Status change requested for user ${userId} to ${newStatus}`);
   };
 
   const handleActivateUser = async (userId) => {
     try {
       await handleUserUpdate(userId, { status: 'active' });
-      // Update local state
-      setUsers(users.map(user => 
-        user.id === userId ? { ...user, status: 'active' } : user
-      ));
       // Refetch data to ensure consistency
       refetch();
     } catch (error) {
@@ -461,7 +476,7 @@ export default function UsersList() {
                           </button>
                         )}
                         <button
-                          onClick={() => handleDelete(user.id)}
+                          onClick={() => handleDeleteUser(user.id)}
                           className="text-red-600 hover:text-red-900"
                           title="Delete User"
                         >
@@ -595,6 +610,9 @@ export default function UsersList() {
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

@@ -25,7 +25,8 @@ const Province = sequelize.define('Province', {
   },
   isActive: {
     type: DataTypes.BOOLEAN,
-    defaultValue: true
+    defaultValue: true,
+    field: 'is_active'
   }
 }, {
   tableName: 'provinces',

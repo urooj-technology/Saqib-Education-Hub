@@ -161,7 +161,7 @@ export default function EditCompany() {
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this company? This action cannot be undone.')) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
         const apiUrl = baseUrl.endsWith('/api') 
           ? `${baseUrl}/companies/${companyId}` 
           : `${baseUrl}/api/companies/${companyId}`;

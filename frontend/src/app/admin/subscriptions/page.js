@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '../../../components/AdminLayout';
 import useSubscription from '../../../api/useSubscription';
+import { toast } from 'react-toastify';
 
 export default function SubscriptionPlans() {
   const router = useRouter();
@@ -49,7 +50,9 @@ export default function SubscriptionPlans() {
         const normalizedPlans = plansData.map(plan => ({
           ...plan,
           features: Array.isArray(plan.features) ? plan.features : 
-                   (typeof plan.features === 'string' ? [plan.features] : [])
+                   (typeof plan.features === 'string' ? 
+                     (plan.features.startsWith('[') ? JSON.parse(plan.features) : [plan.features]) 
+                     : [])
         }));
         
         setPlans(normalizedPlans);
@@ -100,14 +103,22 @@ export default function SubscriptionPlans() {
       // Show success message
       const planName = plans.find(p => p.id === planId)?.name || 'Selected Plan';
       const action = currentSubscription ? 'upgraded to' : 'subscribed to';
-      alert(`Successfully ${action} ${planName}!`);
+      toast.success(`Successfully ${action} ${planName}!`, {
+        position: "top-right",
+        autoClose: 3000,
+      });
       
-      // Redirect back to jobs page
-      router.push('/admin/jobs');
+      // Redirect back to jobs page after a short delay
+      setTimeout(() => {
+        router.push('/admin/jobs');
+      }, 1500);
       
     } catch (error) {
       console.error('Error upgrading plan:', error);
-      alert(`Failed to upgrade plan: ${error.message || 'Please try again.'}`);
+      toast.error(`Failed to upgrade plan: ${error.message || 'Please try again.'}`, {
+        position: "top-right",
+        autoClose: 4000,
+      });
     } finally {
       setLoading(false);
     }
@@ -163,41 +174,41 @@ export default function SubscriptionPlans() {
 
           {/* Current Plan Status */}
           {currentSubscription ? (
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-              <div className="flex items-center justify-between">
+            <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 mb-8">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Current Plan</h2>
-                  <p className="text-gray-600">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900">Current Plan</h2>
+                  <p className="text-sm sm:text-base text-gray-600">
                     {currentSubscription.plan?.name || 'Unknown Plan'} - 
                     {currentSubscription.plan?.jobLimit === 0 
                       ? ' Unlimited job postings' 
-                      : ` Up to ${currentSubscription.plan?.jobLimit} job postings per subscription period`
+                      : ` Up to ${currentSubscription.plan?.jobLimit} job postings`
                     }
                   </p>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">
                     Jobs posted: {currentSubscription.jobsPosted || 0} | 
                     Remaining: {currentSubscription.plan?.jobLimit === 0 ? 'Unlimited' : 
                       Math.max(0, (currentSubscription.plan?.jobLimit || 0) - (currentSubscription.jobsPosted || 0))}
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">
+                <div className="text-left sm:text-right w-full sm:w-auto">
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">
                     ${currentSubscription.amount}
-                    <span className="text-sm font-normal text-gray-600">/{currentSubscription.plan?.duration || 30} days</span>
+                    <span className="text-xs sm:text-sm font-normal text-gray-600">/{currentSubscription.plan?.duration || 30} days</span>
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-xs sm:text-sm text-gray-500">
                     Expires: {new Date(currentSubscription.endDate).toLocaleDateString()}
                   </p>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-8">
-              <div className="flex items-center">
-                <AlertCircle className="w-6 h-6 text-yellow-600 mr-3" />
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 sm:p-6 mb-8">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600 flex-shrink-0" />
                 <div>
-                  <h2 className="text-lg font-semibold text-yellow-800">No Active Subscription</h2>
-                  <p className="text-yellow-700">You don't have an active subscription. Choose a plan below to start posting jobs.</p>
+                  <h2 className="text-base sm:text-lg font-semibold text-yellow-800">No Active Subscription</h2>
+                  <p className="text-sm sm:text-base text-yellow-700">You don't have an active subscription. Choose a plan below to start posting jobs.</p>
                 </div>
               </div>
             </div>

@@ -14,7 +14,7 @@ const useUpdate = (queryKey, token, redirectPath, successMessage, errorMessage, 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }) => {
       setLoading(true);
-      const headers = token ? { Authorization: `Token ${token}` } : {};
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
       // Don't set Content-Type for FormData - let browser set it with boundary
       if (data instanceof FormData) {
@@ -23,11 +23,13 @@ const useUpdate = (queryKey, token, redirectPath, successMessage, errorMessage, 
       }
       
       try {
-        const response = await axios.put(
-          `${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com/api'}/${queryKey}/${id}/`,
-          data,
-          { headers }
-        );
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+        
+        const apiUrl = baseUrl.endsWith('/api') 
+          ? `${baseUrl}/${queryKey}/${id}` 
+          : `${baseUrl}/api/${queryKey}/${id}`;
+        
+        const response = await axios.put(apiUrl, data, { headers });
         return response.data;
       } catch (error) {
         throw new Error(
@@ -65,6 +67,17 @@ const useUpdate = (queryKey, token, redirectPath, successMessage, errorMessage, 
           return query.queryKey[0] === queryKey;
         }
       });
+      
+      // For articles, also invalidate any single article queries and admin list queries
+      if (queryKey === 'articles') {
+        queryClient.invalidateQueries({ 
+          predicate: (query) => {
+            return query.queryKey[0] === 'articles' || 
+                   query.queryKey[0] === 'article' ||
+                   query.queryKey[0] === 'admin-articles';
+          }
+        });
+      }
       
       // Call the success callback if provided
       if (onSuccessCallback) {

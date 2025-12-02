@@ -10,7 +10,17 @@ import {
   Tag,
   Star,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Globe,
+  Building,
+  FileText,
+  Download,
+  Share2,
+  Eye,
+  Clock,
+  Award,
+  BookMarked,
+  Hash
 } from 'lucide-react';
 import PDFReader from '@/components/PDFReader';
 import useFetchObject from '@/api/useFetchObject';
@@ -33,7 +43,7 @@ export default function PublicBookPage() {
   // Additional debugging
   useEffect(() => {
     console.log('Component mounted with bookId:', bookId);
-    console.log('API URL:', process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com/api');
+    console.log('API URL:', process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL);
   }, [bookId]);
 
   const book = bookData?.data?.book;
@@ -100,37 +110,53 @@ export default function PublicBookPage() {
 
 
   return (
-    <div className={`min-h-screen bg-gray-50 ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+    <div className={`min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+      {/* Top Loading Bar */}
+      {isLoading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       {/* Header */}
-      <div className={`bg-white border-b border-gray-200 ${isFullscreen ? 'hidden' : ''}`}>
+      <div className={`bg-white shadow-sm border-b border-gray-200 ${isFullscreen ? 'hidden' : ''}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/books')}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                title="Back to Books"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 truncate max-w-md">
+          <div className="py-3">
+            {/* First Row: Back button and Title */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-3 min-w-0 flex-1">
+                <button
+                  onClick={() => router.push('/books')}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 flex-shrink-0"
+                  title="Back to Books"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h1 className="text-lg font-bold text-gray-900 truncate">
                   {book.title}
                 </h1>
-                <p className="text-sm text-gray-600 truncate max-w-md">
-                  by {book.authors?.map(author => author.penName || author.firstName).join(', ') || 'Unknown Author'}
-                </p>
+              </div>
+              
+              <div className="flex-shrink-0">
+                <button
+                  onClick={toggleFullscreen}
+                  className="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                >
+                  <BookOpen className="w-4 h-4 mr-1.5" />
+                  {isFullscreen ? 'Exit' : 'Fullscreen'}
+                </button>
               </div>
             </div>
             
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={toggleFullscreen}
-                className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
-              >
-                <BookOpen className="w-4 h-4 mr-2" />
-                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              </button>
+            {/* Second Row: Author and Status */}
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-600">
+                by {book.authors?.map(author => author.penName || author.firstName).join(', ') || 'Unknown Author'}
+              </span>
+              {book.status === 'published' && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Published
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -138,82 +164,195 @@ export default function PublicBookPage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Book Info Sidebar */}
-          <div className={`lg:col-span-1 ${isFullscreen ? 'hidden' : ''}`}>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sticky top-6">
-              {/* Book Cover */}
-              {book.coverImageUrl && (
-                <div className="mb-6">
-                  <img
-                    src={book.coverImageUrl}
-                    alt={book.title}
-                    className="w-full h-64 object-cover rounded-lg shadow-md"
-                  />
+        {/* Mobile: Cover First - Smaller */}
+        <div className={`lg:hidden mb-6 ${isFullscreen ? 'hidden' : ''}`}>
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden max-w-xs mx-auto">
+            {book.coverImageUrl ? (
+              <div className="aspect-[3/4] relative">
+                <img
+                  src={book.coverImageUrl}
+                  alt={book.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="aspect-[3/4] flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600">
+                <div className="text-white text-center">
+                  <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-80" />
+                  <p className="text-sm font-medium">Digital Book</p>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
+        </div>
 
-              {/* Book Details */}
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <User className="w-4 h-4 text-gray-400 mr-3" />
-                  <div>
-                    <p className="text-xs text-gray-500">Authors</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {book.authors?.map(author => author.penName || author.firstName).join(', ') || 'Unknown Author'}
-                    </p>
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6">
+          {/* Desktop Sidebar - Book Cover & Details */}
+          <div className={`hidden lg:block lg:col-span-4 ${isFullscreen ? 'hidden' : ''}`}>
+            <div className="space-y-6">
+              {/* Book Cover Card - Desktop Only */}
+              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                {book.coverImageUrl ? (
+                  <div className="aspect-[3/4] relative">
+                    <img
+                      src={book.coverImageUrl}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
                   </div>
-                </div>
-
-                <div className="flex items-center">
-                  <Calendar className="w-4 h-4 text-gray-400 mr-3" />
-                  <div>
-                    <p className="text-xs text-gray-500">Published</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {book.publicationYear || 'N/A'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center">
-                  <Tag className="w-4 h-4 text-gray-400 mr-3" />
-                  <div>
-                    <p className="text-xs text-gray-500">Category</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {book.category || 'N/A'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center">
-                  <BookOpen className="w-4 h-4 text-gray-400 mr-3" />
-                  <div>
-                    <p className="text-xs text-gray-500">Pages</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {book.pages || 'N/A'}
-                    </p>
-                  </div>
-                </div>
-
-
-                {book.rating > 0 && (
-                  <div className="flex items-center">
-                    <Star className="w-4 h-4 text-yellow-400 mr-3" />
-                    <div>
-                      <p className="text-xs text-gray-500">Rating</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {book.rating.toFixed(1)} ({book.ratingCount} reviews)
-                      </p>
+                ) : (
+                  <div className="aspect-[3/4] flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600">
+                    <div className="text-white text-center">
+                      <BookOpen className="w-16 h-16 mx-auto mb-4 opacity-80" />
+                      <p className="text-lg font-medium">Digital Book</p>
                     </div>
                   </div>
                 )}
+                
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-2">
+                      {book.rating > 0 && (
+                        <>
+                          <div className="flex items-center">
+                            {[...Array(5)].map((_, i) => (
+                              <Star 
+                                key={i} 
+                                className={`w-4 h-4 ${i < Math.floor(book.rating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} 
+                              />
+                            ))}
+                          </div>
+                          <span className="text-sm text-gray-600 ml-1">
+                            {book.rating.toFixed(1)} ({book.ratingCount})
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
               </div>
 
-              {/* Description */}
+              {/* Book Details Card */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Book Details</h3>
+                <div className="space-y-4">
+                  <div className="flex items-start">
+                    <User className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Authors</p>
+                      <p className="text-sm text-gray-600">
+                        {book.authors?.map(author => author.penName || author.firstName).join(', ') || 'Unknown Author'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Building className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Publisher</p>
+                      <p className="text-sm text-gray-600">{book.publisher || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Calendar className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Publication Year</p>
+                      <p className="text-sm text-gray-600">{book.publicationYear || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <FileText className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Edition</p>
+                      <p className="text-sm text-gray-600">{book.edition || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <BookOpen className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Pages</p>
+                      <p className="text-sm text-gray-600">{book.pages || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Globe className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Language</p>
+                      <p className="text-sm text-gray-600">{book.language || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Tag className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Category</p>
+                      <p className="text-sm text-gray-600">{book.category || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Award className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Format</p>
+                      <p className="text-sm text-gray-600 uppercase">{book.format || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  {book.price > 0 && (
+                    <div className="flex items-start">
+                      <Hash className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Price</p>
+                        <p className="text-sm text-gray-600">{book.price} {book.currency}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tags Card */}
+              {book.tags && (
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Tags</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      // Handle tags whether they come as array or JSON string
+                      let tagsArray = [];
+                      if (Array.isArray(book.tags)) {
+                        tagsArray = book.tags;
+                      } else if (typeof book.tags === 'string') {
+                        try {
+                          tagsArray = JSON.parse(book.tags);
+                        } catch (e) {
+                          console.warn('Failed to parse tags as JSON:', book.tags);
+                          tagsArray = book.tags.split(',').map(tag => tag.trim());
+                        }
+                      }
+                      
+                      return tagsArray.length > 0 ? tagsArray.map((tag, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800"
+                        >
+                          {tag}
+                        </span>
+                      )) : null;
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Description Card */}
               {book.description && (
-                <div className="mt-6">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Description</h3>
-                  <p className="text-xs text-gray-600 leading-relaxed">
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Description</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">
                     {book.description}
                   </p>
                 </div>
@@ -221,24 +360,140 @@ export default function PublicBookPage() {
             </div>
           </div>
 
-          {/* PDF Reader */}
-          <div className={`${isFullscreen ? 'lg:col-span-4' : 'lg:col-span-3'}`}>
-            {book.fileUrl ? (
-              <PDFReader
-                pdfUrl={book.fileUrl}
-                bookTitle={book.title}
-                onError={handlePDFError}
-                className="h-[calc(100vh-8rem)]"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center min-h-[400px] bg-white rounded-lg shadow-sm border border-gray-200">
-                <BookOpen className="w-16 h-16 text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">PDF Not Available</h3>
-                <p className="text-gray-600 text-center max-w-md">
-                  The PDF file for this book is not available for reading at the moment.
-                </p>
+          {/* PDF Reader Section - Mobile & Desktop */}
+          <div className={`${isFullscreen ? 'lg:col-span-12' : 'lg:col-span-8'}`}>
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+              {book.fileUrl ? (
+                <div className="relative">
+                  <PDFReader
+                    pdfUrl={book.fileUrl}
+                    bookTitle={book.title}
+                    onError={handlePDFError}
+                    className="h-[60vh] sm:h-[70vh] md:h-[75vh] lg:h-[80vh]"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
+                  <div className="text-center">
+                    <div className="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
+                      <BookOpen className="w-12 h-12 text-gray-400" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-3">PDF Not Available</h3>
+                    <p className="text-gray-600 max-w-md mx-auto leading-relaxed mb-6">
+                      The PDF file for this book is currently not available for reading. Please check back later or contact support if this issue persists.
+                    </p>
+                    <button
+                      onClick={() => router.push('/books')}
+                      className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Browse Other Books
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile Only - Book Details Below PDF */}
+          <div className={`lg:hidden ${isFullscreen ? 'hidden' : ''}`}>
+            <div className="space-y-6">
+              {/* Book Details Card */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Book Details</h3>
+                <div className="space-y-4">
+                  <div className="flex items-start">
+                    <User className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Authors</p>
+                      <p className="text-sm text-gray-600">
+                        {book.authors?.map(author => author.penName || author.firstName).join(', ') || 'Unknown Author'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Building className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Publisher</p>
+                      <p className="text-sm text-gray-600">{book.publisher || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Calendar className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Publication Year</p>
+                      <p className="text-sm text-gray-600">{book.publicationYear || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <BookOpen className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Pages</p>
+                      <p className="text-sm text-gray-600">{book.pages || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Globe className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Language</p>
+                      <p className="text-sm text-gray-600">{book.language || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <Tag className="w-5 h-5 text-gray-400 mr-3 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Category</p>
+                      <p className="text-sm text-gray-600">{book.category || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
+
+              {/* Tags Card - Mobile */}
+              {book.tags && (
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Tags</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      let tagsArray = [];
+                      if (Array.isArray(book.tags)) {
+                        tagsArray = book.tags;
+                      } else if (typeof book.tags === 'string') {
+                        try {
+                          tagsArray = JSON.parse(book.tags);
+                        } catch (e) {
+                          tagsArray = book.tags.split(',').map(tag => tag.trim());
+                        }
+                      }
+                      
+                      return tagsArray.length > 0 ? tagsArray.map((tag, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800"
+                        >
+                          {tag}
+                        </span>
+                      )) : null;
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Description Card - Mobile */}
+              {book.description && (
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Description</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    {book.description}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1,6 +1,5 @@
-const Scholarship = require('../models/Scholarship');
-const User = require('../models/User');
-const { Op, sequelize } = require('sequelize');
+const { Scholarship, User } = require('../models');
+const { Op, sequelize, col, fn } = require('sequelize');
 const logger = require('../config/logger');
 const { createError } = require('../middleware/errorHandler');
 
@@ -19,7 +18,7 @@ const getAllScholarships = async (req, res, next) => {
       type,
       level,
       country,
-      status = 'active',
+      status,
       minAmount,
       maxAmount,
       sortBy = 'createdAt',
@@ -29,13 +28,20 @@ const getAllScholarships = async (req, res, next) => {
     // Build where clause for filtering
     const whereClause = {};
     
-    if (status) {
+    if (status && status !== 'All') {
       whereClause.status = status;
     }
     
     // Only show active scholarships for non-admin users
     if (!req.user || req.user.role !== 'admin') {
       whereClause.isActive = true;
+      // For non-admin users, default to active status if not specified
+      if (!status) {
+        whereClause.status = 'active';
+      }
+    } else {
+      // For admin users, don't filter by isActive - show all scholarships
+      // This allows admins to see all scholarships regardless of active status
     }
     
     if (category) {
@@ -111,11 +117,20 @@ const getAllScholarships = async (req, res, next) => {
     const hasNextPage = page < totalPages;
     const hasPrevPage = page > 1;
 
+    // Map scholarship data to include deadline field and ensure timestamps
+    const mappedScholarships = scholarships.map(scholarship => ({
+      ...scholarship.toJSON(),
+      deadline: scholarship.applicationDeadline,
+      // Ensure timestamps are included
+      created_at: scholarship.createdAt,
+      updated_at: scholarship.updatedAt
+    }));
+
     // Build response
     const response = {
       status: 'success',
       data: {
-        scholarships,
+        scholarships: mappedScholarships,
         pagination: {
           currentPage: parseInt(page),
           totalPages,
@@ -174,12 +189,18 @@ const getScholarshipById = async (req, res, next) => {
       return next(createError(404, 'Scholarship not found'));
     }
 
-    // Increment view count
-    await scholarship.incrementView();
+    // Map scholarship data to include deadline field
+    const mappedScholarship = {
+      ...scholarship.toJSON(),
+      deadline: scholarship.applicationDeadline,
+      // Ensure timestamps are included
+      created_at: scholarship.createdAt,
+      updated_at: scholarship.updatedAt
+    };
 
     res.status(200).json({
       status: 'success',
-      data: { scholarship }
+      data: { scholarship: mappedScholarship }
     });
 
   } catch (error) {
@@ -210,7 +231,7 @@ const getFeaturedScholarships = async (req, res, next) => {
           attributes: ['id', 'firstName', 'email', 'avatar']
         }
       ],
-      order: [['createdAt', 'DESC'], ['viewCount', 'DESC']],
+      order: [['createdAt', 'DESC']],
       limit: limitNum
     });
 
@@ -232,13 +253,18 @@ const getFeaturedScholarships = async (req, res, next) => {
  */
 const createScholarship = async (req, res, next) => {
   try {
+    // Debug: Log entire request body first
+    console.log('==== CREATE SCHOLARSHIP DEBUG ====');
+    console.log('Full req.body:', JSON.stringify(req.body, null, 2));
+    console.log('Content-Type:', req.headers['content-type']);
+    
     const {
       title,
       description,
       organization,
       category,
-      type,
-      level,
+      type = 'full_tuition',
+      level = 'undergraduate',
       country,
       amount,
       currency = 'USD',
@@ -248,42 +274,79 @@ const createScholarship = async (req, res, next) => {
       deadline
     } = req.body;
 
-    // Create scholarship
-    const scholarship = await Scholarship.create({
-      title,
-      description,
-      organization,
-      authorId: req.user.id,
-      category,
-      type,
-      level,
-      country,
-      amount: amount ? parseFloat(amount) : null,
-      currency,
-      requirements: requirements ? JSON.parse(requirements) : [],
-      benefits: benefits ? JSON.parse(benefits) : [],
-      status,
-      deadline: deadline ? new Date(deadline) : null,
-      logo: req.file ? req.file.path : null
+    // Debug logging to see what values are received
+    console.log('Extracted scholarship data:', {
+      title, description, organization, category, type, level, country, 
+      amount, currency, requirements, benefits, status, deadline
     });
 
-    // Include author information in response
-    const scholarshipWithAuthor = await Scholarship.findByPk(scholarship.id, {
-      include: [
-        {
-          model: User,
-          as: 'author',
-          attributes: ['id', 'firstName', 'email', 'avatar']
+    // Logo field removed from model - no longer handling logo uploads
+
+    // Parse benefits field if it's a string
+    let parsedBenefits = [];
+    if (benefits) {
+      if (typeof benefits === 'string') {
+        try {
+          parsedBenefits = JSON.parse(benefits);
+        } catch (e) {
+          parsedBenefits = [benefits];
         }
-      ]
-    });
+      } else if (Array.isArray(benefits)) {
+        parsedBenefits = benefits;
+      }
+    }
 
-    logger.info(`New scholarship created: ${scholarship.title} by ${req.user.email}`);
+    // Create scholarship with default values for empty fields
+    const scholarshipData = {
+      title: title || 'Untitled Scholarship',
+      description: description || 'No description provided',
+      organization: organization || 'Unknown Organization',
+      authorId: req.user.id,
+      category: category || 'other',
+      type: type || 'full_tuition',
+      level: level || '',
+      country: country || 'Unknown',
+      amount: (amount !== '' && amount !== null && amount !== undefined) ? parseFloat(amount) : 0,
+      currency: currency || 'USD',
+      requirements: (requirements !== '' && requirements !== null && requirements !== undefined) ? requirements : 'No requirements specified',
+      benefits: parsedBenefits,
+      status: status || 'active',
+      applicationDeadline: (deadline !== '' && deadline !== null && deadline !== undefined) ? new Date(deadline) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+    };
+
+    // Debug logging to see what values are being saved
+    console.log('Saving scholarship data:', scholarshipData);
+
+    const scholarship = await Scholarship.create(scholarshipData);
+
+    // Return complete response with all fields
+    const responseData = {
+      id: scholarship.id,
+      title: scholarship.title,
+      description: scholarship.description,
+      organization: scholarship.organization,
+      category: scholarship.category,
+      type: scholarship.type,
+      level: scholarship.level,
+      country: scholarship.country,
+      amount: scholarship.amount,
+      currency: scholarship.currency,
+      requirements: scholarship.requirements,
+      benefits: scholarship.benefits,
+      status: scholarship.status,
+      deadline: scholarship.applicationDeadline,
+      applicationDeadline: scholarship.applicationDeadline,
+      isActive: scholarship.isActive,
+      featured: scholarship.featured,
+      authorId: scholarship.authorId,
+      createdAt: scholarship.createdAt,
+      updatedAt: scholarship.updatedAt
+    };
 
     res.status(201).json({
       status: 'success',
       message: 'Scholarship created successfully',
-      data: { scholarship: scholarshipWithAuthor }
+      data: { scholarship: responseData }
     });
 
   } catch (error) {
@@ -323,18 +386,37 @@ const updateScholarship = async (req, res, next) => {
     }
 
     // Parse JSON fields if they exist
-    if (updateData.requirements) {
-      updateData.requirements = JSON.parse(updateData.requirements);
-    }
     if (updateData.benefits) {
-      updateData.benefits = JSON.parse(updateData.benefits);
+      if (typeof updateData.benefits === 'string') {
+        try {
+          updateData.benefits = JSON.parse(updateData.benefits);
+        } catch (e) {
+          updateData.benefits = [updateData.benefits];
+        }
+      } else if (!Array.isArray(updateData.benefits)) {
+        updateData.benefits = [];
+      }
+    }
+
+    // Map deadline field to applicationDeadline
+    if (updateData.deadline) {
+      updateData.applicationDeadline = new Date(updateData.deadline);
+      delete updateData.deadline; // Remove the original deadline field
+    }
+
+    // Provide default values for empty fields
+    if (updateData.amount === '' || updateData.amount === null || updateData.amount === undefined) {
+      updateData.amount = 0;
+    }
+    if (updateData.requirements === '' || updateData.requirements === null || updateData.requirements === undefined) {
+      updateData.requirements = 'No requirements specified';
+    }
+    if (updateData.applicationDeadline === null || updateData.applicationDeadline === undefined) {
+      updateData.applicationDeadline = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Default to 1 year from now
     }
 
     // Update scholarship
-    await scholarship.update({
-      ...updateData,
-      logo: req.file ? req.file.path : scholarship.logo
-    });
+    await scholarship.update(updateData);
 
     // Include author information in response
     const updatedScholarship = await Scholarship.findByPk(id, {
@@ -349,10 +431,19 @@ const updateScholarship = async (req, res, next) => {
 
     logger.info(`Scholarship updated: ${scholarship.title} by ${req.user.email}`);
 
+    // Map scholarship data to include deadline field and ensure timestamps
+    const mappedScholarship = {
+      ...updatedScholarship.toJSON(),
+      deadline: updatedScholarship.applicationDeadline,
+      // Ensure timestamps are included
+      created_at: updatedScholarship.createdAt,
+      updated_at: updatedScholarship.updatedAt
+    };
+
     res.status(200).json({
       status: 'success',
       message: 'Scholarship updated successfully',
-      data: { scholarship: updatedScholarship }
+      data: { scholarship: mappedScholarship }
     });
 
   } catch (error) {
@@ -528,7 +619,7 @@ const searchScholarships = async (req, res, next) => {
           attributes: ['id', 'firstName', 'email', 'avatar']
         }
       ],
-      order: [['createdAt', 'DESC'], ['viewCount', 'DESC']],
+      order: [['createdAt', 'DESC']],
       limit: limitNum,
       offset: offset
     });
@@ -569,10 +660,8 @@ const getScholarshipStats = async (req, res, next) => {
         'level',
         'country',
         'status',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-        [sequelize.fn('AVG', sequelize.col('amount')), 'avgAmount'],
-        [sequelize.fn('SUM', sequelize.col('viewCount')), 'totalViews'],
-        [sequelize.fn('SUM', sequelize.col('applicationCount')), 'totalApplications']
+        [fn('COUNT', col('id')), 'count'],
+        [fn('AVG', col('amount')), 'avgAmount']
       ],
       group: ['category', 'type', 'level', 'country', 'status']
     });
@@ -588,37 +677,7 @@ const getScholarshipStats = async (req, res, next) => {
   }
 };
 
-/**
- * @desc    Increment scholarship view count
- * @route   POST /api/scholarships/:id/view
- * @access  Public
- */
-const incrementScholarshipView = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const scholarship = await Scholarship.findByPk(id);
-    
-    if (!scholarship) {
-      return next(createError(404, 'Scholarship not found'));
-    }
-
-    // Increment view count
-    await scholarship.incrementView();
-
-    res.status(200).json({
-      status: 'success',
-      message: 'View count incremented successfully',
-      data: { 
-        viewCount: scholarship.viewCount + 1,
-        id: scholarship.id 
-      }
-    });
-
-  } catch (error) {
-    logger.error('Error in incrementScholarshipView:', error);
-    next(createError(500, 'Failed to increment view count'));
-  }
-};
+// incrementScholarshipView function removed - viewCount field no longer exists
 
 module.exports = {
   getAllScholarships,
@@ -630,6 +689,5 @@ module.exports = {
   toggleScholarshipActive,
   getScholarshipsByCategory,
   searchScholarships,
-  getScholarshipStats,
-  incrementScholarshipView
+  getScholarshipStats
 };

@@ -207,10 +207,9 @@ const validateBook = [
     .isLength({ min: 1, max: 50 })
     .withMessage('Language must be between 1 and 50 characters'),
   
-  body('category')
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Category must be between 1 and 100 characters'),
+  body('categoryId')
+    .isInt({ min: 1 })
+    .withMessage('Category ID must be a valid positive integer'),
   
   body('subcategory')
     .optional()
@@ -303,10 +302,9 @@ const validateArticle = [
     .isLength({ max: 500 })
     .withMessage('Excerpt cannot exceed 500 characters'),
   
-  body('category')
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Category must be between 1 and 100 characters'),
+  body('categoryId')
+    .isInt({ min: 1 })
+    .withMessage('Category ID must be a valid positive integer'),
   
   body('tags')
     .optional()
@@ -460,10 +458,9 @@ const validateJob = [
     .isInt({ min: 1 })
     .withMessage('Company ID must be a valid positive integer'),
   
-  body('category')
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Category must be between 1 and 100 characters'),
+  body('categoryId')
+    .isInt({ min: 1 })
+    .withMessage('Category ID must be a valid positive integer'),
   
   body('subcategory')
     .optional()
@@ -547,19 +544,8 @@ const validateJob = [
   
   body('requirements')
     .optional()
-    .custom((value) => {
-      // Allow both string (JSON) and array formats
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed);
-        } catch {
-          return false;
-        }
-      }
-      return Array.isArray(value);
-    })
-    .withMessage('Requirements must be an array or valid JSON string'),
+    .isString()
+    .withMessage('Requirements must be a string'),
   
   body('benefits')
     .optional()
@@ -626,11 +612,10 @@ const validateJobUpdate = [
     .isInt({ min: 1 })
     .withMessage('Company ID must be a valid positive integer'),
   
-  body('category')
+  body('categoryId')
     .optional()
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Category must be between 1 and 100 characters'),
+    .isInt({ min: 1 })
+    .withMessage('Category ID must be a valid positive integer'),
   
   body('subcategory')
     .optional()
@@ -708,19 +693,8 @@ const validateJobUpdate = [
   
   body('requirements')
     .optional()
-    .custom((value) => {
-      // Allow both string (JSON) and array formats
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed);
-        } catch {
-          return false;
-        }
-      }
-      return Array.isArray(value);
-    })
-    .withMessage('Requirements must be a valid array or JSON string'),
+    .isString()
+    .withMessage('Requirements must be a string'),
   
   body('benefits')
     .optional()
@@ -823,141 +797,19 @@ const validateJobUpdate = [
 ];
 
 /**
- * Scholarship validation rules
+ * Scholarship validation rules - completely removed, no validation
  */
 const validateScholarship = [
-  body('title')
-    .trim()
-    .isLength({ min: 1, max: 255 })
-    .withMessage('Title must be between 1 and 255 characters'),
+  // All validation completely removed - accept any input
+  handleValidationErrors
+];
+
+/**
+ * Scholarship validation rules (for updates - all fields optional)
+ */
+const validateScholarshipUpdate = [
+  // All validation completely removed - accept any input
   
-  body('description')
-    .trim()
-    .isLength({ min: 1, max: 5000 })
-    .withMessage('Description must be between 1 and 5000 characters'),
-  
-  body('organization')
-    .trim()
-    .isLength({ min: 1, max: 255 })
-    .withMessage('Organization must be between 1 and 255 characters'),
-  
-  body('category')
-    .trim()
-    .isIn([
-      'academic', 'athletic', 'arts', 'community_service', 'leadership',
-      'minority', 'need_based', 'merit_based', 'research', 'study_abroad',
-      'graduate', 'undergraduate', 'other'
-    ])
-    .withMessage('Invalid category selection'),
-  
-  body('type')
-    .trim()
-    .isIn([
-      'full_tuition', 'partial_tuition', 'room_board', 'books_supplies',
-      'travel', 'stipend', 'fellowship', 'grant', 'loan', 'other'
-    ])
-    .withMessage('Invalid type selection'),
-  
-  body('level')
-    .trim()
-    .isIn([
-      'high_school', 'undergraduate', 'graduate', 'phd', 'postdoc',
-      'professional', 'other'
-    ])
-    .withMessage('Invalid level selection'),
-  
-  body('country')
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Country must be between 1 and 100 characters'),
-  
-  body('amount')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Amount must be a non-negative number'),
-  
-  body('currency')
-    .optional()
-    .isLength({ min: 3, max: 3 })
-    .withMessage('Currency must be exactly 3 characters'),
-  
-  body('requirements')
-    .optional()
-    .custom((value) => {
-      // Allow both string (JSON) and array formats
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed);
-        } catch {
-          return false;
-        }
-      }
-      return Array.isArray(value);
-    })
-    .withMessage('Requirements must be a valid array or JSON string'),
-  
-  body('benefits')
-    .optional()
-    .custom((value) => {
-      // Allow both string (JSON) and array formats
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed);
-        } catch {
-          return false;
-        }
-      }
-      return Array.isArray(value);
-    })
-    .withMessage('Benefits must be a valid array or JSON string'),
-  
-  body('tags')
-    .optional()
-    .custom((value) => {
-      // Allow both string (JSON) and array formats
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed);
-        } catch {
-          return false;
-        }
-      }
-      return Array.isArray(value);
-    })
-    .withMessage('Tags must be a valid array or JSON string'),
-  
-  body('status')
-    .optional()
-    .isIn(['active', 'inactive', 'expired', 'draft'])
-    .withMessage('Invalid status selection'),
-  
-  body('visibility')
-    .optional()
-    .isIn(['public', 'private', 'restricted'])
-    .withMessage('Invalid visibility selection'),
-  
-  body('closing_date')
-    .optional()
-    .isISO8601()
-    .withMessage('Closing date must be a valid date'),
-  
-  body('deadline')
-    .optional()
-    .isISO8601()
-    .withMessage('Deadline must be a valid date'),
-  
-  body('contract_duration')
-    .optional()
-    .isLength({ max: 100 })
-    .withMessage('Contract duration cannot exceed 100 characters'),
-  
-  body('probation_period')
-    .optional()
-    .isLength({ max: 100 })
-    .withMessage('Probation period cannot exceed 100 characters'),
   
   handleValidationErrors
 ];
@@ -1011,6 +863,7 @@ module.exports = {
   validateJob,
   validateJobUpdate,
   validateScholarship,
+  validateScholarshipUpdate,
   validateId,
   validatePagination,
   validateSearch,

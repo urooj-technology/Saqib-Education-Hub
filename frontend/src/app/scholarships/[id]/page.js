@@ -16,7 +16,12 @@ import {
   Printer, 
   ArrowLeft, 
   Check, 
-  Globe 
+  Globe,
+  Award,
+  FileText,
+  Tag,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import Layout from '../../../components/Layout';
 import useFetchObject from '../../../api/useFetchObject';
@@ -30,7 +35,8 @@ export default function ScholarshipDetail() {
   const [scholarship, setScholarship] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [viewCount, setViewCount] = useState(0);
+  // View count removed - no longer supported
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   // Get token for API calls
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -38,7 +44,7 @@ export default function ScholarshipDetail() {
   // Increment view count function
   const incrementViewCount = useCallback(async (type, id) => {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/${type}/${id}/view` 
         : `${baseUrl}/api/${type}/${id}/view`;
@@ -67,7 +73,7 @@ export default function ScholarshipDetail() {
   useEffect(() => {
     if (scholarshipResponse?.data?.scholarship) {
       setScholarship(scholarshipResponse.data.scholarship);
-      setViewCount(scholarshipResponse.data.scholarship.viewCount || 0);
+      // View count removed - no longer supported
       setLoading(false);
     } else if (scholarshipError) {
       setError('Failed to load scholarship details');
@@ -88,12 +94,8 @@ export default function ScholarshipDetail() {
         
         const handleIncrementView = async () => {
           try {
-            console.log('Incrementing view count for scholarship:', scholarshipId);
-            const result = await incrementViewCount('scholarships', scholarshipId);
-            if (result && result.viewCount) {
-              setViewCount(result.viewCount);
-              console.log('View count updated to:', result.viewCount);
-            }
+            // View count increment removed - no longer supported
+            console.log('View count tracking removed');
           } catch (error) {
             console.error('Failed to increment view count:', error);
             // Don't show error to user, just log it
@@ -135,6 +137,11 @@ export default function ScholarshipDetail() {
 
   const getTypeLabel = (type) => {
     const types = {
+      'full_tuition': 'Full Tuition',
+      'partial_tuition': 'Partial Tuition',
+      'stipend': 'Stipend',
+      'grant': 'Grant',
+      'fellowship': 'Fellowship',
       'merit': 'Merit-based',
       'need': 'Need-based',
       'athletic': 'Athletic',
@@ -148,13 +155,18 @@ export default function ScholarshipDetail() {
   const getCategoryLabel = (category) => {
     const categories = {
       'academic': 'Academic',
-      'merit': 'Merit',
-      'need-based': 'Need-based',
       'athletic': 'Athletic',
-      'research': 'Research',
-      'international': 'International',
+      'arts': 'Arts',
+      'community_service': 'Community Service',
+      'leadership': 'Leadership',
       'minority': 'Minority',
-      'women': 'Women'
+      'need_based': 'Need-based',
+      'merit_based': 'Merit-based',
+      'research': 'Research',
+      'study_abroad': 'Study Abroad',
+      'graduate': 'Graduate',
+      'undergraduate': 'Undergraduate',
+      'other': 'Other'
     };
     return categories[category] || category;
   };
@@ -190,6 +202,12 @@ export default function ScholarshipDetail() {
 
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {loading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
         <div className="bg-white shadow-sm">
@@ -214,163 +232,250 @@ export default function ScholarshipDetail() {
 
         {/* Main Content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column - Scholarship Info and Details */}
+            <div className="lg:col-span-2 space-y-6">
               {/* Scholarship Header */}
-              <div className="bg-white rounded-lg shadow-sm p-8 mb-6">
-                <div className="flex items-start justify-between mb-6">
-                  <div className="flex-1">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-4">{scholarship.title}</h1>
-                    <p className="text-lg text-gray-600 mb-4">{scholarship.description}</p>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+                  <div className="flex-shrink-0 mx-auto sm:mx-0">
+                    <div className="w-32 h-32 sm:w-40 sm:h-48 md:w-48 md:h-64 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+                      <Award className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-white" />
+                    </div>
                   </div>
-                  {scholarship.featured && (
-                    <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
-                      Featured
-                    </span>
-                  )}
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-2 mb-4">
+                      <div className="flex-1">
+                        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">{scholarship.title}</h1>
+                        <p className="text-base sm:text-lg text-gray-600 mb-4">
+                          by {scholarship.organization || 'Unknown Organization'}
+                        </p>
+                      </div>
+                      {scholarship.featured && (
+                        <span className="bg-yellow-100 text-yellow-800 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium flex-shrink-0">
+                          Featured
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
+                      <div className="flex items-center">
+                        <DollarSign className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
+                        <span className="text-sm text-gray-500">Amount:</span>
+                        <span className="ml-2 text-sm font-medium text-gray-900">{formatAmount(scholarship.amount, scholarship.currency)}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <Tag className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
+                        <span className="text-sm text-gray-500">Type:</span>
+                        <span className="ml-2 text-sm font-medium text-gray-900">{getTypeLabel(scholarship.type)}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <MapPin className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
+                        <span className="text-sm text-gray-500">Location:</span>
+                        <span className="ml-2 text-sm font-medium text-gray-900">{scholarship.country || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <GraduationCap className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
+                        <span className="text-sm text-gray-500">Level:</span>
+                        <span className="ml-2 text-sm font-medium text-gray-900">{getLevelLabel(scholarship.level)}</span>
+                      </div>
+                    </div>
 
-                {/* Scholarship Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div className="flex items-center">
-                    <DollarSign className="w-4 h-4 mr-2" />
-                    <span>{formatAmount(scholarship.amount, scholarship.currency)}</span>
+                    {/* Action Buttons */}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors font-semibold">
+                        Apply Now
+                      </button>
+                      <button className="border border-purple-600 text-purple-600 px-6 py-2 rounded-lg hover:bg-purple-50 transition-colors font-semibold">
+                        Save for Later
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center">
-                    <GraduationCap className="w-4 h-4 mr-2" />
-                    <span>{getLevelLabel(scholarship.level)}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <Building className="w-4 h-4 mr-2" />
-                    <span>{scholarship.provider}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <Eye className="w-4 h-4 mr-2" />
-                    <span>{viewCount}</span>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-center gap-4">
-                  <button className="bg-purple-600 text-white px-8 py-3 rounded-lg hover:bg-purple-700 transition-colors font-semibold">
-                    Apply Now
-                  </button>
-                  <button className="border border-purple-600 text-purple-600 px-8 py-3 rounded-lg hover:bg-purple-50 transition-colors font-semibold">
-                    Save for Later
-                  </button>
                 </div>
               </div>
 
-              {/* Scholarship Details */}
-              <div className="bg-white rounded-lg shadow-sm p-8 mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Scholarship Details</h2>
-                
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Description</h3>
-                    <p className="text-gray-700 leading-relaxed">{scholarship.description}</p>
+              {/* Description */}
+              {scholarship.description && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Description</h3>
+                  <div className="text-gray-700 leading-relaxed">
+                    <p className={`whitespace-pre-wrap ${!showFullDescription && scholarship.description.length > 300 ? 'line-clamp-6' : ''}`}>
+                      {scholarship.description}
+                    </p>
+                    {scholarship.description.length > 300 && (
+                      <button
+                        onClick={() => setShowFullDescription(!showFullDescription)}
+                        className="mt-4 text-purple-600 hover:text-purple-700 font-medium flex items-center space-x-1"
+                      >
+                        <span>{showFullDescription ? 'Show Less' : 'Read More'}</span>
+                        {showFullDescription ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
                   </div>
-
-                  {scholarship.eligibility && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Eligibility Requirements</h3>
-                      <p className="text-gray-700 leading-relaxed">{scholarship.eligibility}</p>
-                    </div>
-                  )}
-
-                  {scholarship.requirements && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Application Requirements</h3>
-                      <p className="text-gray-700 leading-relaxed">{scholarship.requirements}</p>
-                    </div>
-                  )}
-
-                  {scholarship.benefits && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Benefits</h3>
-                      <p className="text-gray-700 leading-relaxed">{scholarship.benefits}</p>
-                    </div>
-                  )}
                 </div>
-              </div>
+              )}
+
+              {/* Requirements */}
+              {scholarship.requirements && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Requirements</h3>
+                  <div className="text-gray-700 leading-relaxed">
+                    <p className="whitespace-pre-wrap">{scholarship.requirements}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Benefits */}
+              {scholarship.benefits && scholarship.benefits.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Benefits</h3>
+                  <div className="space-y-2">
+                    {Array.isArray(scholarship.benefits) ? (
+                      scholarship.benefits.map((benefit, index) => (
+                        <div key={index} className="flex items-start">
+                          <Check className="w-4 h-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                          <span className="text-gray-700">{benefit}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-gray-700">{scholarship.benefits}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Sidebar */}
-            <div className="lg:col-span-1">
-              {/* Quick Info */}
-              <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Info</h3>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Category</span>
-                    <span className="font-medium">{getCategoryLabel(scholarship.category)}</span>
+            {/* Right Column - Sidebar */}
+            <div className="space-y-6">
+              {/* Scholarship Information */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Scholarship Information</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center">
+                    <Award className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Title</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">{scholarship.title}</p>
+                    </div>
                   </div>
                   
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Type</span>
-                    <span className="font-medium">{getTypeLabel(scholarship.type)}</span>
+                  <div className="flex items-center">
+                    <Building className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Organization</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">{scholarship.organization || 'N/A'}</p>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Level</span>
-                    <span className="font-medium">{getLevelLabel(scholarship.level)}</span>
+
+                  <div className="flex items-center">
+                    <DollarSign className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Amount</p>
+                      <p className="text-sm font-medium text-gray-900">{formatAmount(scholarship.amount, scholarship.currency)}</p>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Country</span>
-                    <span className="font-medium">{scholarship.country}</span>
+
+                  <div className="flex items-center">
+                    <MapPin className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Country</p>
+                      <p className="text-sm font-medium text-gray-900">{scholarship.country || 'N/A'}</p>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Amount</span>
-                    <span className="font-medium">{formatAmount(scholarship.amount, scholarship.currency)}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Deadline</span>
-                    <span className="font-medium">{formatDate(scholarship.deadline)}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Status</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      scholarship.status === 'active' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {scholarship.status}
-                    </span>
+
+                  <div className="flex items-center">
+                    <GraduationCap className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Level</p>
+                      <p className="text-sm font-medium text-gray-900">{getLevelLabel(scholarship.level)}</p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Contact Info */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
-                
+              {/* Important Dates */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Important Dates</h3>
                 <div className="space-y-3">
                   <div className="flex items-center">
-                    <Building className="w-4 h-4 mr-3 text-gray-400" />
-                    <span className="text-gray-700">{scholarship.provider}</span>
+                    <Calendar className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Posted</p>
+                      <p className="text-sm font-medium text-gray-900">{formatDate(scholarship.createdAt)}</p>
+                    </div>
                   </div>
                   
-                  {scholarship.website && (
-                    <div className="flex items-center">
-                      <Globe className="w-4 h-4 mr-3 text-gray-400" />
-                      <a 
-                        href={scholarship.website} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-purple-600 hover:text-purple-700 transition-colors"
-                      >
-                        Visit Website
-                      </a>
+                  
+                  
+                  <div className="flex items-center">
+                    <Calendar className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Application Deadline</p>
+                      <p className="text-sm font-medium text-gray-900">{formatDate(scholarship.deadline)}</p>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
+
+
+              {/* Contact Information - Only show if contact info exists */}
+              {(scholarship.contactEmail || scholarship.contactPhone || scholarship.applicationUrl) && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
+                  <div className="space-y-3">
+                    {scholarship.contactEmail && (
+                      <div className="flex items-center">
+                        <Globe className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500">Email</p>
+                          <a 
+                            href={`mailto:${scholarship.contactEmail}`}
+                            className="text-sm font-medium text-purple-600 hover:text-purple-700 transition-colors"
+                          >
+                            {scholarship.contactEmail}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {scholarship.contactPhone && (
+                      <div className="flex items-center">
+                        <Building className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500">Phone</p>
+                          <a 
+                            href={`tel:${scholarship.contactPhone}`}
+                            className="text-sm font-medium text-purple-600 hover:text-purple-700 transition-colors"
+                          >
+                            {scholarship.contactPhone}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {scholarship.applicationUrl && (
+                      <div className="flex items-center">
+                        <Globe className="w-4 h-4 text-gray-400 mr-3 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500">Application URL</p>
+                          <a 
+                            href={scholarship.applicationUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-purple-600 hover:text-purple-700 transition-colors"
+                          >
+                            Visit Application Page
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

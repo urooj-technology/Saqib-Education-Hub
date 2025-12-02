@@ -67,7 +67,7 @@ export default function UserDashboard() {
       if (!token) return;
       
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         const apiUrl = baseUrl.endsWith('/api') 
           ? `${baseUrl}/subscriptions/my-subscription` 
           : `${baseUrl}/api/subscriptions/my-subscription`;
@@ -180,7 +180,7 @@ export default function UserDashboard() {
   const handleActivateJob = async (jobId) => {
     if (confirm('Are you sure you want to activate this job? It will be visible to the public.')) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         const apiUrl = baseUrl.endsWith('/api') 
           ? `${baseUrl}/jobs/${jobId}` 
           : `${baseUrl}/api/jobs/${jobId}`;
@@ -211,7 +211,7 @@ export default function UserDashboard() {
   const handleDeactivateJob = async (jobId) => {
     if (confirm('Are you sure you want to deactivate this job? It will no longer be visible to the public.')) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com';
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL;
         const apiUrl = baseUrl.endsWith('/api') 
           ? `${baseUrl}/jobs/${jobId}` 
           : `${baseUrl}/api/jobs/${jobId}`;
@@ -398,30 +398,87 @@ export default function UserDashboard() {
         )}
 
         {/* Subscription Info */}
-        <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Subscription Information</h2>
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg shadow-sm border border-indigo-200 p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+              <Star className="w-5 h-5 mr-2 text-indigo-600" />
+              Subscription Information
+            </h2>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              subscriptionInfo.plan === 'enterprise' ? 'bg-purple-100 text-purple-800' :
+              subscriptionInfo.plan === 'premium' ? 'bg-blue-100 text-blue-800' :
+              subscriptionInfo.plan === 'basic' ? 'bg-green-100 text-green-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {subscriptionInfo.plan.toUpperCase()}
+            </span>
+          </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Current Plan</p>
-              <p className="text-lg font-semibold text-gray-900 capitalize">
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <p className="text-sm font-medium text-gray-600 mb-2">Current Plan</p>
+              <p className="text-2xl font-bold text-gray-900 capitalize">
                 {subscriptionInfo.plan}
               </p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Jobs Posted</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {subscriptionInfo.jobsPosted} / {subscriptionInfo.jobLimit === 999 ? '∞' : subscriptionInfo.jobLimit}
+              <p className="text-xs text-gray-500 mt-1">
+                {subscriptionInfo.plan === 'enterprise' ? 'Unlimited job postings' :
+                 subscriptionInfo.plan === 'premium' ? 'Up to 50 job postings' :
+                 subscriptionInfo.plan === 'basic' ? 'Up to 10 job postings' :
+                 'No active plan'}
               </p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Remaining Jobs</p>
-              <p className={`text-lg font-semibold ${
+            
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <p className="text-sm font-medium text-gray-600 mb-2">Jobs Posted</p>
+              <div className="flex items-baseline">
+                <p className="text-2xl font-bold text-gray-900">
+                  {subscriptionInfo.jobsPosted}
+                </p>
+                <p className="text-sm text-gray-500 ml-1">
+                  / {subscriptionInfo.jobLimit === 999 ? '∞' : subscriptionInfo.jobLimit}
+                </p>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                <div 
+                  className={`h-2 rounded-full ${
+                    subscriptionInfo.remainingJobs > 0 ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                  style={{ 
+                    width: `${subscriptionInfo.jobLimit === 999 ? 100 : 
+                           Math.min(100, (subscriptionInfo.jobsPosted / subscriptionInfo.jobLimit) * 100)}%` 
+                  }}
+                ></div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <p className="text-sm font-medium text-gray-600 mb-2">Remaining Jobs</p>
+              <p className={`text-2xl font-bold ${
                 subscriptionInfo.remainingJobs > 0 ? 'text-green-600' : 'text-red-600'
               }`}>
                 {subscriptionInfo.jobLimit === 999 ? '∞' : subscriptionInfo.remainingJobs}
               </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {subscriptionInfo.remainingJobs > 0 ? 'Available to post' : 'Limit reached'}
+              </p>
             </div>
           </div>
+          
+          {subscriptionInfo.remainingJobs <= 0 && subscriptionInfo.plan !== 'enterprise' && (
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="w-5 h-5 text-yellow-600 mr-2" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-800">
+                    You've reached your job posting limit for the {subscriptionInfo.plan} plan.
+                  </p>
+                  <p className="text-xs text-yellow-700 mt-1">
+                    Consider upgrading your plan to post more jobs or contact support for assistance.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
 

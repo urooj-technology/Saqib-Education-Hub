@@ -21,21 +21,21 @@ import {
   ToggleRight,
   Download
 } from 'lucide-react';
-import AdminLayout from '../../../components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout';
 import Link from 'next/link';
-import { useAuth } from '../../../context/AuthContext';
-import useFetchObjects from '../../../api/useFetchObjects';
-import { getImageUrl } from '../../../utils/imageUtils';
+import { useAuth } from '@/context/AuthContext';
+import useFetchObjects from '@/api/useFetchObjects';
+import useDelete from '@/api/useDelete';
+import { getImageUrl } from '@/utils/imageUtils';
 
 
-const categories = ['All', 'Education Technology', 'Mathematics', 'Artificial Intelligence', 'Sustainability', 'Digital Skills', 'Science', 'Literature', 'History'];
+// Categories will be fetched dynamically from the API
 const statuses = ['All', 'published', 'draft', 'archived'];
-const authors = ['All', 'Dr. Sarah Johnson', 'Prof. Ahmed Khan', 'Dr. Michael Chen', 'Dr. Fatima Al-Zahra', 'Prof. David Wilson'];
-
 export default function ArticlesList() {
   const [page, setPage] = useState(0);
   const [rowPerPage, setRowPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [selectedAuthor, setSelectedAuthor] = useState('All');
@@ -44,16 +44,52 @@ export default function ArticlesList() {
   
   const auth = useAuth();
   const token = auth.token;
+
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(0);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
+  // Fetch article categories dynamically
+  const { data: categoriesData, loading: categoriesLoading } = useFetchObjects(
+    "article-categories",
+    "article-categories?limit=1000", 
+    token
+  );
+  const articleCategories = categoriesData?.data?.categories || [];
+  const categories = ['All', ...articleCategories.map(cat => cat.name)];
+
+  // Fetch authors dynamically
+  const { data: authorsData, loading: authorsLoading } = useFetchObjects(
+    "article-authors",
+    "articles/authors?limit=1000",
+    token
+  );
+  const articleAuthors = authorsData?.data?.authors || [];
+  const authors = ['All', ...articleAuthors.map(author => author.penName)];
+
+  // Use the useDelete hook for clean delete functionality
+  const { handleDelete, ConfirmDialog } = useDelete('articles', token);
   
   // Fetch articles from backend with pagination, search, and filters
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: fetchedArticles,
     isLoading: loading,
     isError: error,
     refetch
   } = useFetchObjects(
-    ["articles", searchTerm, selectedCategory, selectedStatus, selectedAuthor, sortBy, page, rowPerPage],
-    `articles/?search=${encodeURIComponent(searchTerm)}&category=${selectedCategory !== 'All' ? selectedCategory : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}&author=${selectedAuthor !== 'All' ? selectedAuthor : ''}&sortBy=${sortBy}&page=${page + 1}&limit=${rowPerPage}`,
+    ['admin-articles', debouncedSearchTerm, selectedCategory, selectedStatus, selectedAuthor, sortBy, page, rowPerPage],
+    `articles?search=${encodeURIComponent(debouncedSearchTerm)}&category=${selectedCategory !== 'All' ? selectedCategory : ''}&status=${selectedStatus !== 'All' ? selectedStatus : ''}&author=${selectedAuthor !== 'All' ? selectedAuthor : ''}&sortBy=${sortBy}&page=${page + 1}&limit=${rowPerPage}`,
     token
   );
 
@@ -76,27 +112,26 @@ export default function ArticlesList() {
     rowPerPage
   });
 
-  const handleDelete = (articleId) => {
-    if (confirm('Are you sure you want to delete this article? This action cannot be undone.')) {
-      setArticles(articles.filter(article => article.id !== articleId));
-    }
+  // Handle delete with the clean delete hook
+  const handleDeleteArticle = (articleId) => {
+    handleDelete(articleId);
+    // The useDelete hook handles everything: confirmation, API call, and query invalidation
   };
 
   const handleStatusChange = (articleId, newStatus) => {
-    setArticles(articles.map(article => 
-      article.id === articleId ? { ...article, status: newStatus } : article
-    ));
+    // Status changes are handled by the backend, just refetch the data
+    refetch();
   };
 
-  const toggleFeatured = (articleId) => {
-    setArticles(articles.map(article => 
-      article.id === articleId ? { ...article, featured: !article.featured } : article
-    ));
-  };
 
   const toggleActive = async (articleId) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}/api/articles/${articleId}/toggle-active`, {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/articles/${articleId}/toggle-active`
+        : `${baseUrl}/api/articles/${articleId}/toggle-active`;
+
+      const response = await fetch(apiUrl, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -105,14 +140,8 @@ export default function ArticlesList() {
       });
 
       if (response.ok) {
-        const result = await response.json();
-        // Update the article in the local state
-        setArticles(articles.map(article => 
-          article.id === articleId ? { ...article, isActive: result.data.article.isActive } : article
-        ));
-        setFilteredArticles(articles.map(article => 
-          article.id === articleId ? { ...article, isActive: result.data.article.isActive } : article
-        ));
+        // Refetch the data to get the updated article
+        refetch();
       } else {
         console.error('Failed to toggle article active status');
       }
@@ -130,29 +159,59 @@ export default function ArticlesList() {
       button.disabled = true;
 
       // Direct download
-      const downloadUrl = `https://api.saqibeduhub.com/api/articles/${articleId}/download`;
+      const downloadUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/articles/${articleId}/download`;
       
-      // Test if the URL is accessible first
-      const response = await fetch(downloadUrl, { method: 'HEAD' });
-      if (!response.ok) {
-        throw new Error('PDF not available for download');
-      }
+      // Use a more robust download approach
+      try {
+        // First, try to fetch the file with proper CORS headers
+        const response = await fetch(downloadUrl, { 
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            'Accept': 'application/pdf, */*',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
 
-      // Create download link
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `article-${articleId}.pdf`;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+        // Get the blob data
+        const blob = await response.blob();
+        
+        // Create download link with blob URL
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `article-${articleId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the blob URL
+        window.URL.revokeObjectURL(url);
+        
+      } catch (fetchError) {
+        console.warn('Direct fetch failed, trying fallback method:', fetchError);
+        
+        // Fallback: Direct link download (may trigger browser download)
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `article-${articleId}.pdf`;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
 
       // Reset button state
       button.innerHTML = originalText;
       button.disabled = false;
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      alert('Failed to download PDF. Please try again.');
+      alert(`Failed to download PDF: ${error.message}. Please try again.`);
       
       // Reset button state
       const button = event.target;
@@ -359,7 +418,7 @@ export default function ArticlesList() {
                     <div className="flex-shrink-0 h-16 w-16 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
                       {article.featuredImageUrl || article.featuredImage ? (
                         <img
-                          src={article.featuredImageUrl || `${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}${article.featuredImage}`}
+                          src={article.featuredImageUrl || `${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL}${article.featuredImage}`}
                           alt={article.title}
                           className="h-16 w-16 rounded-lg object-cover"
                           onError={(e) => {
@@ -379,19 +438,17 @@ export default function ArticlesList() {
                         <User className="w-3 h-3 text-gray-400 mr-1" />
                         <p className="text-xs text-gray-500 font-medium">
                           {article.authors && article.authors.length > 0 
-                            ? article.authors[0].penName || 'Unknown Author'
+                            ? article.authors.map(author => author.penName).join(', ') || 'Unknown Author'
                             : 'No Author'
                           }
                         </p>
                       </div>
                       <div className="text-xs text-gray-600 mt-2 line-clamp-2">
-                        {article.excerpt || (
-                          <div 
-                            dangerouslySetInnerHTML={{ 
-                              __html: article.content?.substring(0, 100) + '...' || '' 
-                            }}
-                          />
-                        )}
+                        <div 
+                          dangerouslySetInnerHTML={{ 
+                            __html: article.content?.substring(0, 100) + '...' || 'No content available' 
+                          }}
+                        />
                       </div>
                       
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -434,7 +491,7 @@ export default function ArticlesList() {
                           <Edit className="w-4 h-4" />
                         </Link>
                         <button
-                          onClick={() => handleDelete(article.id)}
+                          onClick={() => handleDeleteArticle(article.id)}
                           className="text-red-600 hover:text-red-900 p-1"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -483,7 +540,7 @@ export default function ArticlesList() {
                             <div className="flex-shrink-0 h-12 w-12 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
                               {article.featuredImageUrl || article.featuredImage ? (
                                 <img
-                                  src={article.featuredImageUrl || `${process.env.NEXT_PUBLIC_API_URL || 'https://api.saqibeduhub.com'}${article.featuredImage}`}
+                                  src={article.featuredImageUrl || `${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL}${article.featuredImage}`}
                                   alt={article.title}
                                   className="h-12 w-12 rounded-lg object-cover"
                                   onError={(e) => {
@@ -501,13 +558,11 @@ export default function ArticlesList() {
                                 {article.title}
                               </div>
                               <div className="text-sm text-gray-500 max-w-xs truncate">
-                                {article.excerpt || (
-                                  <div 
-                                    dangerouslySetInnerHTML={{ 
-                                      __html: article.content?.substring(0, 100) + '...' || '' 
-                                    }}
-                                  />
-                                )}
+                                <div 
+                                  dangerouslySetInnerHTML={{ 
+                                    __html: article.content?.substring(0, 100) + '...' || 'No content available' 
+                                  }}
+                                />
                               </div>
                             </div>
                           </div>
@@ -517,7 +572,7 @@ export default function ArticlesList() {
                             <User className="w-4 h-4 text-gray-400 mr-2" />
                             <div className="text-sm text-gray-900 font-medium">
                               {article.authors && article.authors.length > 0 
-                                ? article.authors[0].penName || 'Unknown Author'
+                                ? article.authors.map(author => author.penName).join(', ') || 'Unknown Author'
                                 : 'No Author'
                               }
                             </div>
@@ -575,7 +630,7 @@ export default function ArticlesList() {
                               <Edit className="w-4 h-4" />
                             </Link>
                             <button
-                              onClick={() => handleDelete(article.id)}
+                              onClick={() => handleDeleteArticle(article.id)}
                               className="text-red-600 hover:text-red-900"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -705,6 +760,9 @@ export default function ArticlesList() {
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

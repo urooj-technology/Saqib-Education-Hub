@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Save, 
   X, 
@@ -28,6 +28,16 @@ export default function CreateAuthor() {
   const auth = useAuth();
   const token = auth.token;
   const { handleAdd, loading, success, responseData, error } = useAdd("authors", token);
+
+  // Handle successful creation and redirect
+  useEffect(() => {
+    if (success && responseData) {
+      // Show success message and redirect after a short delay
+      setTimeout(() => {
+        router.push('/admin/authors');
+      }, 1500);
+    }
+  }, [success, responseData, router]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;

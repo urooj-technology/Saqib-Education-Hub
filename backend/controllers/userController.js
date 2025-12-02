@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { UserSubscription, SubscriptionPlan } = require('../models');
-const { Op, sequelize } = require('sequelize');
+const { Op, sequelize, col, fn } = require('sequelize');
 const logger = require('../config/logger');
 const { createError } = require('../utils/errorHandler');
 
@@ -437,7 +437,7 @@ const getUserStats = async (req, res, next) => {
       attributes: [
         'role',
         'status',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+        [fn('COUNT', col('id')), 'count']
       ],
       group: ['role', 'status']
     });

@@ -4,82 +4,158 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Search, Calendar, User, Heart, Share2, Clock, Tag, X, Filter, Download } from 'lucide-react';
 import Layout from '../../components/Layout';
-import useFetchObjects from '../../api/useFetchObjects';
+import useFetchObjects from '@/api/useFetchObjects';
 
 
 
-const categories = ["All Categories", "Education", "Technology", "Career", "Scholarships", "Wellness", "Language"];
+// Categories will be fetched dynamically from the API
 
 const sortOptions = [
   { value: 'publishedAt', label: 'Latest First' },
   { value: 'createdAt', label: 'Newest First' },
-  { value: 'title', label: 'Title A-Z' },
-  { value: 'likes', label: 'Most Liked' }
+  { value: 'title', label: 'Title A-Z' }
 ];
+
 
 export default function Articles() {
   const [page, setPage] = useState(0);
-  const [rowPerPage, setRowPerPage] = useState(10);
+  const [rowPerPage, setRowPerPage] = useState(12);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  const [selectedAuthor, setSelectedAuthor] = useState('All Authors');
+
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(0);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
+  // Fetch article categories dynamically
+  const { data: categoriesData, loading: categoriesLoading } = useFetchObjects(
+    "article-categories",
+    "article-categories?limit=1000"
+  );
+  const articleCategories = categoriesData?.data?.categories || [];
+  const categories = ["All Categories", ...articleCategories.map(cat => cat.name)];
+
+  // Fetch authors dynamically
+  const { data: authorsData, loading: authorsLoading } = useFetchObjects(
+    "article-authors",
+    "articles/authors?limit=1000"
+  );
+  const articleAuthors = authorsData?.data?.authors || [];
+  const authors = ["All Authors", ...articleAuthors.map(author => author.penName)];
+
   const [sortBy, setSortBy] = useState('publishedAt');
   const [sortOrder, setSortOrder] = useState('DESC');
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [isPageLoading, setIsPageLoading] = useState(false);
 
   // Fetch articles from backend with pagination and search (no authentication required for public access)
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: fetchedArticles,
     isLoading: loading,
     isError: error,
     refetch
   } = useFetchObjects(
-    ["articles", searchTerm, selectedCategory, sortBy, sortOrder, page, rowPerPage],
-    `articles/?search=${encodeURIComponent(searchTerm)}&category=${selectedCategory !== 'All Categories' ? selectedCategory : ''}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
+    ["articles", debouncedSearchTerm, selectedCategory, selectedAuthor, sortBy, sortOrder, page, rowPerPage],
+    `articles/?search=${encodeURIComponent(debouncedSearchTerm)}&category=${selectedCategory !== 'All Categories' ? selectedCategory : ''}&author=${selectedAuthor !== 'All Authors' ? selectedAuthor : ''}&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
     null // No token needed for public access
   );
 
-  // Extract pagination info from API response
-  const pagination = fetchedArticles?.data?.pagination || {};
+  // Extract pagination info from API response with fallback values
+  const pagination = fetchedArticles?.data?.pagination || {
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 10,
+    hasNextPage: false,
+    hasPrevPage: false
+  };
   const totalPages = pagination.totalPages || 1;
   const totalItems = pagination.totalItems || 0;
 
-  // Use real API data if available, otherwise fall back to mock data
+  // Use real API data - backend already handles filtering, sorting, and pagination
   const articles = fetchedArticles?.data?.articles || fetchedArticles?.data?.results || [];
-  
-  const filteredArticles = articles.filter(article => {
-    if (!article || !article.title) return false;
-    
-    const matchesSearch = article.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (article.authors && article.authors.length > 0 && article.authors[0]?.penName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                         (article.excerpt && article.excerpt.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                         (article.content && article.content.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesCategory = selectedCategory === 'All Categories' || article.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-  const sortedArticles = [...filteredArticles].sort((a, b) => {
-    if (!a || !b) return 0;
-    
-    switch (sortBy) {
-      case 'date':
-        const dateA = new Date(a.publishedAt || a.publishDate || 0);
-        const dateB = new Date(b.publishedAt || b.publishDate || 0);
-        return dateB - dateA;
-      case 'likes':
-        return (b.likeCount || b.likes || 0) - (a.likeCount || a.likes || 0);
-      case 'title':
-        return (a.title || '').localeCompare(b.title || '');
-      default:
-        return 0;
-    }
-  });
 
   const openArticleDetails = (article) => {
     setSelectedArticle(article);
     setShowModal(true);
   };
+
+  // Handle page changes with loading state
+  const handlePageChange = (newPage) => {
+    setIsPageLoading(true);
+    setPage(newPage);
+    // Loading will be cleared when new data arrives
+  };
+
+  // Handle row per page changes with loading state
+  const handleRowPerPageChange = (newRowPerPage) => {
+    setIsPageLoading(true);
+    setRowPerPage(newRowPerPage);
+    setPage(0); // Reset to first page
+    // Loading will be cleared when new data arrives
+  };
+
+  // Handle search with loading state
+  const handleSearchChange = (newSearchTerm) => {
+    setIsPageLoading(true);
+    setSearchTerm(newSearchTerm);
+    setPage(0); // Reset to first page
+    // Loading will be cleared when new data arrives
+  };
+
+  // Handle category change with loading state
+  const handleCategoryChange = (newCategory) => {
+    setIsPageLoading(true);
+    setSelectedCategory(newCategory);
+    setPage(0); // Reset to first page
+    // Loading will be cleared when new data arrives
+  };
+
+  // Handle author change with loading state
+  const handleAuthorChange = (newAuthor) => {
+    setIsPageLoading(true);
+    setSelectedAuthor(newAuthor);
+    setPage(0); // Reset to first page
+    // Loading will be cleared when new data arrives
+  };
+
+  // Handle sort change with loading state
+  const handleSortChange = (newSortBy) => {
+    setIsPageLoading(true);
+    setSortBy(newSortBy);
+    setPage(0); // Reset to first page
+    // Loading will be cleared when new data arrives
+  };
+
+  // Handle sort order change with loading state
+  const handleSortOrderChange = (newSortOrder) => {
+    setIsPageLoading(true);
+    setSortOrder(newSortOrder);
+    setPage(0); // Reset to first page
+    // Loading will be cleared when new data arrives
+  };
+
+  // Clear loading state when data changes
+  useEffect(() => {
+    if (fetchedArticles && !loading) {
+      setIsPageLoading(false);
+    }
+  }, [fetchedArticles, loading]);
 
   const handleDownload = async (articleId, event) => {
     try {
@@ -90,29 +166,62 @@ export default function Articles() {
       button.disabled = true;
 
       // Direct download without opening PDF viewer
-      const downloadUrl = `https://api.saqibeduhub.com/api/articles/${articleId}/download`;
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const downloadUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/articles/${articleId}/download`
+        : `${baseUrl}/api/articles/${articleId}/download`;
       
-      // Test if the URL is accessible first
-      const response = await fetch(downloadUrl, { method: 'HEAD' });
-      if (!response.ok) {
-        throw new Error('PDF not available for download');
-      }
+      // Use a more robust download approach
+      try {
+        // First, try to fetch the file with proper CORS headers
+        const response = await fetch(downloadUrl, { 
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            'Accept': 'application/pdf, */*',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
 
-      // Create download link
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `article-${articleId}.pdf`;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+        // Get the blob data
+        const blob = await response.blob();
+        
+        // Create download link with blob URL
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `article-${articleId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the blob URL
+        window.URL.revokeObjectURL(url);
+        
+      } catch (fetchError) {
+        console.warn('Direct fetch failed, trying fallback method:', fetchError);
+        
+        // Fallback: Direct link download (may trigger browser download)
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `article-${articleId}.pdf`;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
 
       // Reset button state
       button.innerHTML = originalText;
       button.disabled = false;
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      alert('Failed to download PDF. Please try again.');
+      alert(`Failed to download PDF: ${error.message}. Please try again.`);
       
       // Reset button state
       const button = event.target;
@@ -121,8 +230,46 @@ export default function Articles() {
     }
   };
 
+  const handleShare = async (article) => {
+    const shareData = {
+      title: article.title,
+      text: article.excerpt || article.description || 'Check out this educational article',
+      url: window.location.href
+    };
+
+    try {
+      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        // Use native Web Share API if available
+        await navigator.share(shareData);
+      } else {
+        // Fallback: Copy to clipboard
+        const shareText = `${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`;
+        await navigator.clipboard.writeText(shareText);
+        alert('Article link copied to clipboard!');
+      }
+    } catch (error) {
+      console.error('Error sharing article:', error);
+      // Final fallback: Copy to clipboard
+      try {
+        const shareText = `${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`;
+        await navigator.clipboard.writeText(shareText);
+        alert('Article link copied to clipboard!');
+      } catch (clipboardError) {
+        console.error('Clipboard error:', clipboardError);
+        alert('Unable to share. Please copy the URL manually.');
+      }
+    }
+  };
+
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {(loading || isPageLoading) && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-orange-600 to-red-600 text-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -140,40 +287,41 @@ export default function Articles() {
       {/* Search and Filters */}
       <section className="py-8 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 <input
                   type="text"
                   placeholder="Search articles, authors, or topics..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full pl-9 sm:pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm sm:text-base"
                 />
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-2 sm:gap-4">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center px-4 py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50"
+                className="inline-flex items-center px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm sm:text-base"
               >
-                <Filter className="w-5 h-5 mr-2" />
-                Filters
+                <Filter className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Filters</span>
+                <span className="sm:hidden">Filter</span>
               </button>
             </div>
           </div>
 
           {/* Advanced Filters */}
           {showFilters && (
-            <div className="mt-6 bg-white p-6 rounded-lg border border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mt-4 sm:mt-6 bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <select
                     value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    onChange={(e) => handleCategoryChange(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   >
                     {categories.map(category => (
@@ -183,10 +331,24 @@ export default function Articles() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Author</label>
+                  <select
+                    value={selectedAuthor}
+                    onChange={(e) => handleAuthorChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    disabled={authorsLoading}
+                  >
+                    {authors.map(author => (
+                      <option key={author} value={author}>{author}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
                   <select
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
+                    onChange={(e) => handleSortChange(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   >
                     {sortOptions.map(option => (
@@ -205,7 +367,7 @@ export default function Articles() {
                       name="sortOrder"
                       value="DESC"
                       checked={sortOrder === 'DESC'}
-                      onChange={(e) => setSortOrder(e.target.value)}
+                      onChange={(e) => handleSortOrderChange(e.target.value)}
                       className="mr-2"
                     />
                     Newest First
@@ -216,7 +378,7 @@ export default function Articles() {
                       name="sortOrder"
                       value="ASC"
                       checked={sortOrder === 'ASC'}
-                      onChange={(e) => setSortOrder(e.target.value)}
+                      onChange={(e) => handleSortOrderChange(e.target.value)}
                       className="mr-2"
                     />
                     Oldest First
@@ -241,10 +403,12 @@ export default function Articles() {
           </div>
 
           {/* Loading State */}
-          {loading && (
+          {(loading || isPageLoading) && (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
-              <p className="mt-2 text-gray-600">Loading articles...</p>
+              <p className="mt-2 text-gray-600">
+                {isPageLoading ? 'Loading new articles...' : 'Loading articles...'}
+              </p>
             </div>
           )}
 
@@ -263,26 +427,25 @@ export default function Articles() {
           )}
 
           {/* Articles Grid - Card Format */}
-          {!loading && !error && (
+          {!loading && !isPageLoading && !error && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {sortedArticles.length === 0 ? (
+              {articles.length === 0 ? (
                 <div className="col-span-full text-center py-12">
                   <div className="text-gray-500 text-lg mb-2">No articles found</div>
                   <p className="text-gray-400">Try adjusting your search or filters</p>
                 </div>
               ) : (
-                sortedArticles.map((article) => (
+                articles.map((article) => (
               <div key={article.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100">
                 {/* Article Image */}
                 <div className="relative">
                   {article.featuredImageUrl ? (
-                    <Image
+                    <img
                       src={article.featuredImageUrl}
                       alt={article.title}
-                      width={400}
-                      height={250}
                       className="w-full h-48 object-cover"
                       onError={(e) => {
+                        console.error('Failed to load image:', article.featuredImageUrl);
                         e.target.style.display = 'none';
                       }}
                     />
@@ -301,9 +464,6 @@ export default function Articles() {
                     </div>
                   )}
                   
-                  <div className="absolute top-3 right-3 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-sm">
-                    {article.readTime || '5 min read'}
-                  </div>
                 </div>
 
                 {/* Article Content */}
@@ -333,14 +493,25 @@ export default function Articles() {
                       <User className="w-4 h-4 text-gray-400 mr-2" />
                       <span className="text-sm text-gray-700">
                         {article.authors && article.authors.length > 0 
-                          ? article.authors[0].penName || 'Unknown Author'
+                          ? article.authors.map(author => author.penName).join(', ') || 'Unknown Author'
                           : article.author || 'No Author'
                         }
                       </span>
                     </div>
                     <div className="flex items-center text-gray-500 text-sm">
                       <Calendar className="w-4 h-4 mr-1" />
-                      {new Date(article.publishedAt || article.publishDate).toLocaleDateString()}
+                      {article.publishedAt || article.publishDate ? 
+                        new Date(article.publishedAt || article.publishDate).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        }) : 
+                        new Date(article.createdAt).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })
+                      }
                     </div>
                   </div>
 
@@ -361,10 +532,11 @@ export default function Articles() {
                           <Download className="w-4 h-4" />
                         </button>
                       )}
-                      <button className="p-2 text-gray-400 hover:text-red-500 transition-colors">
-                        <Heart className="w-4 h-4" />
-                      </button>
-                      <button className="p-2 text-gray-400 hover:text-blue-500 transition-colors">
+                      <button 
+                        onClick={() => handleShare(article)}
+                        className="p-2 text-gray-400 hover:text-blue-500 transition-colors"
+                        title="Share article"
+                      >
                         <Share2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -377,44 +549,60 @@ export default function Articles() {
           )}
 
           {/* Pagination */}
-          {!loading && (
-            <div className="mt-8 flex items-center justify-between">
+          {!loading && !isPageLoading && articles.length > 0 && (
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-gray-600">Rows per page:</span>
                 <select
                   value={rowPerPage}
-                  onChange={(e) => {
-                    setRowPerPage(Number(e.target.value));
-                    setPage(0);
-                  }}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  onChange={(e) => handleRowPerPageChange(Number(e.target.value))}
+                  className="border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                 >
                   <option value={6}>6</option>
-                  <option value={9}>9</option>
                   <option value={12}>12</option>
                   <option value={18}>18</option>
+                  <option value={24}>24</option>
                 </select>
+                <span className="text-sm text-gray-600 ml-4">
+                  Showing {page * rowPerPage + 1}-{Math.min((page + 1) * rowPerPage, totalItems)} of {totalItems}
+                </span>
               </div>
               
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setPage(Math.max(0, page - 1))}
+                  onClick={() => handlePageChange(0)}
                   disabled={page === 0}
-                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="First page"
+                >
+                  First
+                </button>
+                <button
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page === 0}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Previous
                 </button>
                 
-                <span className="text-sm text-gray-700">
+                <span className="text-sm font-medium text-gray-700 px-2">
                   Page {page + 1} of {totalPages}
                 </span>
                 
                 <button
-                  onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
+                  onClick={() => handlePageChange(page + 1)}
                   disabled={page >= totalPages - 1}
-                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Next
+                </button>
+                <button
+                  onClick={() => handlePageChange(totalPages - 1)}
+                  disabled={page >= totalPages - 1}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Last page"
+                >
+                  Last
                 </button>
               </div>
             </div>
@@ -432,7 +620,7 @@ export default function Articles() {
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">{selectedArticle.title}</h2>
                   <p className="text-lg text-gray-600">
                     {selectedArticle.authors && selectedArticle.authors.length > 0 
-                      ? selectedArticle.authors[0].penName || 'Unknown Author'
+                      ? selectedArticle.authors.map(author => author.penName).join(', ') || 'Unknown Author'
                       : selectedArticle.author || 'No Author'
                     }
                   </p>
@@ -449,13 +637,12 @@ export default function Articles() {
                 <div className="lg:col-span-2">
                   <div className="mb-6">
                     {selectedArticle.featuredImageUrl ? (
-                      <Image
+                      <img
                         src={selectedArticle.featuredImageUrl}
                         alt={selectedArticle.title}
-                        width={800}
-                        height={400}
                         className="w-full h-64 object-cover rounded-lg mb-4"
                         onError={(e) => {
+                          console.error('Failed to load modal image:', selectedArticle.featuredImageUrl);
                           e.target.style.display = 'none';
                         }}
                       />
@@ -485,15 +672,20 @@ export default function Articles() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Published:</span>
-                        <span className="font-medium">{new Date(selectedArticle.publishedAt || selectedArticle.publishDate).toLocaleDateString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Read Time:</span>
-                        <span className="font-medium">{selectedArticle.readTime ? `${selectedArticle.readTime} min` : 'N/A'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Likes:</span>
-                        <span className="font-medium">{selectedArticle.likeCount || selectedArticle.likes || 0}</span>
+                        <span className="font-medium">
+                          {selectedArticle.publishedAt || selectedArticle.publishDate ? 
+                            new Date(selectedArticle.publishedAt || selectedArticle.publishDate).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            }) : 
+                            new Date(selectedArticle.createdAt).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })
+                          }
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -525,7 +717,10 @@ export default function Articles() {
                         Download PDF
                       </button>
                     )}
-                    <button className="bg-gray-100 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-200 transition-colors font-medium">
+                    <button 
+                      onClick={() => handleShare(selectedArticle)}
+                      className="bg-gray-100 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                    >
                       Share
                     </button>
                   </div>

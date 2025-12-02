@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Menu, X, User, LogOut, Briefcase, CheckCircle, Clock, AlertCircle, Globe } from 'lucide-react';
+import { Menu, X, User, LogOut, Briefcase, CheckCircle, Clock, AlertCircle, Globe, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const navigation = [
@@ -24,7 +24,7 @@ const languages = [
   { code: 'dr', name: 'دری', flag: '🇦🇫' }
 ];
 
-export default function Header({ translations, currentLang, onLanguageChange }) {
+const Header = memo(function Header({ translations, currentLang, onLanguageChange }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
@@ -47,12 +47,17 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
     };
   }, [showUserMenu, showLanguageMenu]);
 
-  const handleLanguageChange = (langCode) => {
+  // Memoize callback functions to prevent unnecessary re-renders
+  const handleLanguageChange = useCallback((langCode) => {
     onLanguageChange?.(langCode);
     setShowLanguageMenu(false);
-  };
+  }, [onLanguageChange]);
 
-  const currentLanguage = languages.find(lang => lang.code === currentLang) || languages[0];
+  // Memoize computed value
+  const currentLanguage = useMemo(
+    () => languages.find(lang => lang.code === currentLang) || languages[0],
+    [currentLang]
+  );
   
 
 
@@ -62,31 +67,31 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
         <div className="flex justify-between items-center h-16 lg:h-20">
           {/* Logo */}
           <div className="flex items-center">
-            <Link href="/" className="flex items-center space-x-2 lg:space-x-3 group">
-              <div className="w-8 h-8 lg:w-10 lg:h-10 relative group-hover:scale-110 transition-transform duration-200">
+            <Link href="/" className="flex items-center space-x-2 md:space-x-3 group">
+              <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 relative group-hover:scale-110 transition-transform duration-200">
                 <Image
                   src="/logo/Logo Designe.png"
                   alt="Saqib Education Hub Logo"
                   fill
                   className="object-contain"
                   priority
-                  sizes="(max-width: 1024px) 32px, 40px"
+                  sizes="(max-width: 768px) 32px, (max-width: 1024px) 40px, 48px"
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-lg lg:text-xl font-bold text-gray-900">Saqib</span>
-                <span className="text-xs text-gray-500 hidden sm:block">Education Hub</span>
+                <span className="text-sm md:text-lg lg:text-xl font-bold text-gray-900">Saqib</span>
+                <span className="text-xs md:text-sm text-gray-500">Education Hub</span>
               </div>
             </Link>
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center space-x-2">
+          <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
             {navigation.map((item) => (
               <Link
                 key={item.name}
                 href={item.href}
-                className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
+                className="px-2 lg:px-4 py-2 lg:py-2.5 text-xs lg:text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
               >
                 {translations[item.name] || item.name.replace('navigation.', '') || 'Navigation'}
               </Link>
@@ -94,16 +99,16 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
           </nav>
 
           {/* Right side - Language icon and profile */}
-          <div className="flex items-center space-x-2 lg:space-x-4">
+          <div className="flex items-center space-x-1 md:space-x-2 lg:space-x-4">
             {/* Language Icon */}
             <div className="relative language-menu-container">
               <button
                 onClick={() => setShowLanguageMenu(!showLanguageMenu)}
-                className="flex items-center justify-center w-10 h-10 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors relative"
+                className="flex items-center justify-center w-8 h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors relative"
                 title={`Current language: ${currentLanguage.name}`}
               >
-                <Globe className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 text-xs bg-indigo-600 text-white rounded-full w-4 h-4 flex items-center justify-center">
+                <Globe className="w-4 h-4 md:w-5 md:h-5" />
+                <span className="absolute -top-1 -right-1 text-xs bg-indigo-600 text-white rounded-full w-3 h-3 md:w-4 md:h-4 flex items-center justify-center">
                   {currentLanguage.flag}
                 </span>
               </button>
@@ -129,45 +134,16 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
             </div>
             
             {isAuthenticated ? (
-              <div className="hidden lg:flex items-center space-x-3">
-                {/* User Status */}
-                <div className="flex items-center space-x-2">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    user?.status === 'active' ? 'bg-green-100 text-green-800' : 
-                    user?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {user?.status === 'active' ? (
-                      <>
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Active
-                      </>
-                    ) : user?.status === 'pending' ? (
-                      <>
-                        <Clock className="w-3 h-3 mr-1" />
-                        Pending
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        {user?.status}
-                      </>
-                    )}
-                  </span>
-                </div>
-
+              <div className="hidden lg:flex items-center">
                 {/* User Menu */}
                 <div className="relative user-menu-container">
                   <button
                     onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-200"
+                    className="flex items-center justify-center w-8 h-8 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-200"
                   >
-                    <div className="w-8 h-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full flex items-center justify-center">
-                      <span className="text-white text-sm font-semibold">
-                        {user?.firstName?.charAt(0) || 'U'}
-                      </span>
+                    <div className="w-8 h-8 bg-white border-2 border-gray-300 rounded-full flex items-center justify-center hover:border-indigo-500 transition-colors">
+                      <User className="w-5 h-5 text-gray-600" />
                     </div>
-                    <span className="hidden xl:block">{user?.firstName}</span>
                   </button>
 
                   {showUserMenu && (
@@ -227,9 +203,10 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
               <div className="hidden lg:flex items-center space-x-3">
                 <Link
                   href="/auth/login"
-                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-200"
+                  className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-200"
                 >
-                  Sign In
+                  <LogIn className="w-4 h-4" />
+                  <span>Sign In</span>
                 </Link>
                 <Link
                   href="/auth/signup"
@@ -243,7 +220,7 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
             {/* Mobile menu button */}
             <button
               type="button"
-              className="lg:hidden inline-flex items-center justify-center p-2 rounded-lg text-gray-700 hover:text-indigo-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 transition-colors"
+              className="md:hidden inline-flex items-center justify-center p-2 rounded-lg text-gray-700 hover:text-indigo-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 transition-colors"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               <span className="sr-only">Open main menu</span>
@@ -259,7 +236,7 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
 
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden absolute top-full left-0 right-0 bg-white border-t border-gray-200 shadow-xl z-50">
+        <div className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-gray-200 shadow-xl z-50">
           <div className="px-4 py-4 space-y-2">
             {navigation.map((item) => (
               <Link
@@ -351,7 +328,7 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
                     className="flex items-center px-4 py-3 text-base font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200 rounded-lg"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <User className="w-4 h-4 mr-3" />
+                    <LogIn className="w-4 h-4 mr-3" />
                     Sign In
                   </Link>
                   <Link
@@ -370,4 +347,6 @@ export default function Header({ translations, currentLang, onLanguageChange }) 
       )}
     </header>
   );
-} 
+});
+
+export default Header;

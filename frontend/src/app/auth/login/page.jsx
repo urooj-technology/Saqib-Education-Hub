@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth as useAuthContext } from "../../../context/AuthContext";
 import useAdd from "@/api/useAdd";
+import { toast } from "react-toastify";
 
 const Login = () => {
   // All hooks must be called at the top level, before any conditional returns
@@ -18,7 +19,7 @@ const Login = () => {
   });
 
   // Use useAdd for authentication - this will POST to /api/auth/login/
-  const { handleAdd, loading, success, responseData } = useAdd("auth/login", null);
+  const { handleAdd, loading, success, responseData, error: mutationError } = useAdd("auth/login", null);
 
   const handleShowPassword = () => {
     setShowPassword(!showPassword);
@@ -30,13 +31,17 @@ const Login = () => {
 
   useEffect(() => {
     // Check if we're already logged in, but only after loading is complete
-    if (authContext.isAuthenticated && !authContext.loading) {
+    if (authContext.isAuthenticated && !authContext.loading && authContext.user) {
+      console.log('User already authenticated, redirecting based on role:', authContext.user.role);
       // Redirect based on user role
-      if (authContext.user?.role === 'admin') {
+      if (authContext.user.role === 'admin') {
+        console.log('Redirecting authenticated admin to /admin');
         router.push("/admin");
-      } else if (authContext.user?.role === 'hr') {
+      } else if (authContext.user.role === 'hr') {
+        console.log('Redirecting authenticated HR to /user/dashboard');
         router.push("/user/dashboard");
       } else {
+        console.log('Redirecting authenticated user to /');
         router.push("/"); // Default redirect for other roles
       }
     }
@@ -65,14 +70,19 @@ const Login = () => {
           const storedToken = localStorage.getItem('token');
           console.log('Token stored in localStorage:', storedToken);
           
-          // Redirect based on user role
-          if (userData.role === 'admin') {
-            router.push("/admin");
-          } else if (userData.role === 'hr') {
-            router.push("/user/dashboard");
-          } else {
-            router.push("/"); // Default redirect for other roles
-          }
+          // Redirect based on user role with a small delay to ensure auth context is updated
+          setTimeout(() => {
+            if (userData.role === 'admin') {
+              console.log('Redirecting admin user to /admin');
+              router.push("/admin");
+            } else if (userData.role === 'hr') {
+              console.log('Redirecting HR user to /user/dashboard');
+              router.push("/user/dashboard");
+            } else {
+              console.log('Redirecting regular user to /');
+              router.push("/"); // Default redirect for other roles
+            }
+          }, 100);
         } else {
           console.error('Missing userData or token:', { userData, token });
           setError("Invalid response from server");
@@ -83,6 +93,34 @@ const Login = () => {
       }
     }
   }, [success, responseData, authContext, router]);
+
+  // Handle mutation errors
+  useEffect(() => {
+    if (mutationError) {
+      console.error('Login mutation error:', mutationError);
+      
+      // Extract error message from the mutation error
+      let errorMessage = "Login failed. Please try again.";
+      
+      if (mutationError.response?.data?.message) {
+        errorMessage = mutationError.response.data.message;
+      } else if (mutationError.message) {
+        errorMessage = mutationError.message;
+      }
+      
+      setError(errorMessage);
+      
+      // Show toast notification for better user experience
+      toast.error(errorMessage, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    }
+  }, [mutationError]);
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -147,15 +185,36 @@ const Login = () => {
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className={`mb-6 p-4 rounded-lg border ${
+            error.includes('not activated') || error.includes('system administrator') 
+              ? 'bg-yellow-50 border-yellow-200' 
+              : 'bg-red-50 border-red-200'
+          }`}>
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
+                {error.includes('not activated') || error.includes('system administrator') ? (
+                  <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                )}
               </div>
               <div className="ml-3">
-                <p className="text-sm text-red-800">{error}</p>
+                <p className={`text-sm ${
+                  error.includes('not activated') || error.includes('system administrator') 
+                    ? 'text-yellow-800' 
+                    : 'text-red-800'
+                }`}>
+                  {error}
+                </p>
+                {error.includes('not activated') && (
+                  <p className="text-xs text-yellow-600 mt-1">
+                    Please contact your system administrator to activate your account.
+                  </p>
+                )}
               </div>
             </div>
           </div>

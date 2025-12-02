@@ -23,42 +23,17 @@ import {
   ListOrdered,
   Quote,
   Undo,
-  Redo
+  Redo,
+  Loader2
 } from 'lucide-react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import { StarterKit } from '@tiptap/starter-kit';
-import { TextStyle } from '@tiptap/extension-text-style';
-import { Color } from '@tiptap/extension-color';
-import { BulletList } from '@tiptap/extension-bullet-list';
-import { OrderedList } from '@tiptap/extension-ordered-list';
-import { ListItem } from '@tiptap/extension-list-item';
-import { Heading } from '@tiptap/extension-heading';
-import { TextAlign } from '@tiptap/extension-text-align';
-import { Underline } from '@tiptap/extension-underline';
-import { Strike } from '@tiptap/extension-strike';
-import { Code } from '@tiptap/extension-code';
-import { Link } from '@tiptap/extension-link';
-import AdminLayout from '../../../../components/AdminLayout';
+import RichTextarea from '@/components/RichTextarea';
+import AdminLayout from '@/components/AdminLayout';
 import NextLink from 'next/link';
-import { useAuth } from '../../../../context/AuthContext';
-import useAdd from '../../../../api/useAdd';
-import useFetchObjects from '../../../../api/useFetchObjects';
+import { uploadFileInChunks } from '@/utils/chunkedUpload';
+import { useAuth } from '@/context/AuthContext';
+import useAdd from '@/api/useAdd';
+import useFetchObjects from '@/api/useFetchObjects';
 import { toast } from 'react-toastify';
-
-const categories = [
-  'Education Technology',
-  'Mathematics', 
-  'Artificial Intelligence',
-  'Sustainability',
-  'Digital Skills',
-  'Science',
-  'Literature',
-  'History',
-  'Programming',
-  'Design',
-  'Business',
-  'Health'
-];
 
 const statuses = [
   { value: 'draft', label: 'Draft', description: 'Save as draft for later editing' },
@@ -71,13 +46,28 @@ export default function CreateArticle() {
   const auth = useAuth();
   const token = auth.token;
   
+  // Fetch article categories using useFetchObjects
+  const { data: categoriesData, loading: categoriesLoading, error: categoriesError, refetch: refetchArticleCategories } = useFetchObjects(
+    "article-categories",
+    "article-categories", 
+    token
+  );
+  const articleCategories = categoriesData?.data?.categories || [];
+  
+  // Create category functionality using useAdd
+  const { handleAdd: handleAddCategory, loading: createCategoryLoading } = useAdd(
+    "article-categories",
+    token,
+    null,
+    "Category created successfully!",
+    "Failed to create category"
+  );
+  
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    excerpt: '',
-    category: '',
-    readTime: '',
-    status: 'draft',
+    categoryId: '',
+    status: 'published', // Default to published so articles show up immediately
     authorIds: [] // Array of selected author IDs
   });
   
@@ -89,91 +79,30 @@ export default function CreateArticle() {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showAddAuthorModal, setShowAddAuthorModal] = useState(false);
   const [authorSearchTerm, setAuthorSearchTerm] = useState('');
-  const [isMounted, setIsMounted] = useState(false);
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newCategoryData, setNewCategoryData] = useState({
+    name: ''
+  });
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
   const documentInputRef = useRef(null);
 
-  // Rich text editor setup
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        bulletList: false, // Disable default bullet list
-        orderedList: false, // Disable default ordered list
-        listItem: false, // Disable default list item
-      }),
-      TextStyle,
-      Color,
-      Heading.configure({
-        levels: [1, 2, 3, 4, 5, 6],
-      }),
-      BulletList.configure({
-        HTMLAttributes: {
-          class: 'list-disc list-outside ml-4',
-        },
-      }),
-      OrderedList.configure({
-        HTMLAttributes: {
-          class: 'list-decimal list-outside ml-4',
-        },
-      }),
-      ListItem,
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-      }),
-      Underline,
-      Strike,
-      Code.configure({
-        HTMLAttributes: {
-          class: 'bg-gray-100 px-1 py-0.5 rounded text-sm font-mono',
-        },
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'text-blue-600 underline cursor-pointer',
-        },
-      }),
-    ],
-    content: formData.content,
-    immediatelyRender: false,
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      setFormData(prev => ({
+  // Handle content change for rich text editor
+  const handleContentChange = (content) => {
+    setFormData(prev => ({
+      ...prev,
+      content: content
+    }));
+    
+    // Clear error when user starts typing
+    if (errors.content) {
+      setErrors(prev => ({
         ...prev,
-        content: html
+        content: ''
       }));
-      
-      // Auto-calculate read time
-      const textContent = editor.getText();
-      if (textContent.trim()) {
-        const readTime = calculateReadTime(textContent);
-        setFormData(prev => ({
-          ...prev,
-          readTime: readTime.toString()
-        }));
-      }
-      
-      // Clear error when user starts typing
-      if (errors.content) {
-        setErrors(prev => ({
-          ...prev,
-          content: ''
-        }));
-      }
-    },
-  });
-
-  // Set mounted state to avoid SSR issues
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  // Update editor content when formData.content changes
-  useEffect(() => {
-    if (editor && formData.content !== editor.getHTML()) {
-      editor.commands.setContent(formData.content);
     }
-  }, [formData.content, editor]);
+  };
 
   // Use the useAdd hook for creating articles
   const { handleAdd, loading, success, error } = useAdd(
@@ -223,6 +152,49 @@ export default function CreateArticle() {
         ...prev,
         [name]: ''
       }));
+    }
+  };
+
+  const handleCategoryInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewCategoryData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryData.name.trim()) {
+      toast.error('Category name is required');
+      return;
+    }
+
+    try {
+      const response = await handleAddCategory(newCategoryData);
+      
+      if (response) {
+        // Reset form
+        setNewCategoryData({
+          name: ''
+        });
+        
+        // Close modal
+        setShowAddCategoryModal(false);
+        
+        // Set the new category as selected
+        setFormData(prev => ({
+          ...prev,
+          categoryId: response.data.category.id
+        }));
+        
+        // Refetch categories to update the dropdown
+        refetchArticleCategories();
+        
+        // Show success message
+        toast.success('Category created successfully!');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to create category');
     }
   };
 
@@ -331,13 +303,10 @@ export default function CreateArticle() {
       newErrors.content = 'Content is required';
     }
     
-    if (!formData.category) {
-      newErrors.category = 'Category is required';
+    if (!formData.categoryId) {
+      newErrors.categoryId = 'Category is required';
     }
     
-    if (formData.readTime && (isNaN(formData.readTime) || formData.readTime < 1)) {
-      newErrors.readTime = 'Read time must be a positive number';
-    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -351,14 +320,52 @@ export default function CreateArticle() {
       return;
     }
     
+    setIsUploading(true);
+    setUploadProgress(0);
+
     try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const uploadUrl = baseUrl.endsWith('/api') ? `${baseUrl}/upload` : `${baseUrl}/api/upload`;
+      
+      let uploadedDocumentFile = null;
+      
+      // Upload document attachment using chunked upload for better performance
+      if (documentAttachment) {
+        try {
+          console.log('Article - Document attachment selected:', documentAttachment.name, documentAttachment.size);
+          
+          // Use chunked upload for files larger than 5MB
+          if (documentAttachment.size > 5 * 1024 * 1024) {
+            console.log('Article - Using chunked upload for large document');
+            const uploadResult = await uploadFileInChunks(
+              documentAttachment,
+              uploadUrl,
+              { chunkSize: 1024 * 1024 }, // 1MB chunks
+              (progress) => {
+                setUploadProgress(Math.round(progress * 0.8)); // 80% for file upload
+              },
+              {
+                'Authorization': `Token ${localStorage.getItem('token')}`
+              }
+            );
+            
+            uploadedDocumentFile = uploadResult;
+            console.log('Article - Chunked upload completed:', uploadResult);
+          } else {
+            console.log('Article - Using regular upload for small document');
+            // For smaller files, we'll add directly to form data
+          }
+        } catch (uploadError) {
+          console.error('Article - Document upload failed:', uploadError);
+          throw new Error('Failed to upload document attachment. Please try again.');
+        }
+      }
+
       // Create FormData for file upload
       const submitData = new FormData();
       submitData.append('title', formData.title);
       submitData.append('content', formData.content);
-      submitData.append('excerpt', formData.excerpt);
-      submitData.append('category', formData.category);
-      submitData.append('readTime', formData.readTime);
+      submitData.append('categoryId', formData.categoryId);
       submitData.append('status', formData.status);
       
       // Add author IDs as JSON string
@@ -366,19 +373,47 @@ export default function CreateArticle() {
         submitData.append('authorIds', JSON.stringify(formData.authorIds));
       }
       
+      // Add featured image (smaller file, regular upload)
       if (featuredImage) {
+        setUploadProgress(90);
         submitData.append('featuredImage', featuredImage);
       }
       
+      // Add document attachment to form data
       if (documentAttachment) {
-        submitData.append('documentAttachment', documentAttachment);
+        setUploadProgress(85);
+        console.log('Article - documentAttachment file:', documentAttachment);
+        console.log('Article - uploadedDocumentFile result:', uploadedDocumentFile);
+        
+        // If we used chunked upload, send the result
+        if (uploadedDocumentFile) {
+          console.log('Article - Using chunked upload result');
+          submitData.append('uploadedDocumentFile', JSON.stringify(uploadedDocumentFile));
+        } else {
+          console.log('Article - Using regular upload');
+          // For smaller files, add directly to form data
+          submitData.append('documentAttachment', documentAttachment);
+        }
+      }
+
+      setUploadProgress(95);
+      
+      // Debug: Log FormData contents
+      console.log('Article - FormData contents:');
+      for (let [key, value] of submitData.entries()) {
+        console.log(`${key}:`, value);
       }
       
-      handleAdd(submitData);
+      await handleAdd(submitData);
+      
+      setUploadProgress(100);
       
     } catch (error) {
       console.error('Error creating article:', error);
       toast.error('Failed to create article');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -403,86 +438,6 @@ export default function CreateArticle() {
     return Math.ceil(wordCount / wordsPerMinute);
   };
 
-  // Rich text editor toolbar component
-  const RichTextToolbar = () => {
-    if (!editor) return null;
-
-    return (
-      <div className="border-b border-gray-200 p-3 bg-gray-50">
-        <div className="flex flex-wrap items-center gap-1">
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            className={`p-1.5 rounded hover:bg-gray-200 ${
-              editor.isActive('bold') ? 'bg-blue-200 text-blue-800' : 'text-gray-700'
-            }`}
-            title="Bold"
-          >
-            <Bold className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            className={`p-1.5 rounded hover:bg-gray-200 ${
-              editor.isActive('italic') ? 'bg-blue-200 text-blue-800' : 'text-gray-700'
-            }`}
-            title="Italic"
-          >
-            <Italic className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            className={`p-1.5 rounded hover:bg-gray-200 ${
-              editor.isActive('bulletList') ? 'bg-blue-200 text-blue-800' : 'text-gray-700'
-            }`}
-            title="Bullet List"
-          >
-            <List className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            className={`p-1.5 rounded hover:bg-gray-200 ${
-              editor.isActive('orderedList') ? 'bg-blue-200 text-blue-800' : 'text-gray-700'
-            }`}
-            title="Numbered List"
-          >
-            <ListOrdered className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            className={`p-1.5 rounded hover:bg-gray-200 ${
-              editor.isActive('blockquote') ? 'bg-blue-200 text-blue-800' : 'text-gray-700'
-            }`}
-            title="Quote"
-          >
-            <Quote className="w-4 h-4" />
-          </button>
-          <div className="w-px h-6 bg-gray-300 mx-2" />
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().undo().run()}
-            disabled={!editor.can().undo()}
-            className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700"
-            title="Undo"
-          >
-            <Undo className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().redo().run()}
-            disabled={!editor.can().redo()}
-            className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700"
-            title="Redo"
-          >
-            <Redo className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    );
-  };
 
 
   return (
@@ -558,62 +513,14 @@ export default function CreateArticle() {
                     </div>
                   </div>
                 ) : (
-                  <div className={`border rounded-lg overflow-hidden shadow-sm focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 ${
-                    errors.content ? 'border-red-300' : 'border-gray-300'
-                  }`}>
-                    {isMounted && editor && (
-                      <>
-                        <RichTextToolbar />
-                        <div className="bg-white">
-                          <EditorContent 
-                            editor={editor} 
-                            className="min-h-[400px] p-4 prose prose-sm max-w-none focus:outline-none"
-                            style={{
-                              '--tw-prose-headings': '#111827',
-                              '--tw-prose-body': '#374151',
-                              '--tw-prose-links': '#2563eb',
-                              '--tw-prose-bold': '#111827',
-                              '--tw-prose-counters': '#6b7280',
-                              '--tw-prose-bullets': '#6b7280',
-                              '--tw-prose-hr': '#e5e7eb',
-                              '--tw-prose-quotes': '#111827',
-                              '--tw-prose-quote-borders': '#e5e7eb',
-                              '--tw-prose-captions': '#6b7280',
-                              '--tw-prose-code': '#111827',
-                              '--tw-prose-pre-code': '#e5e7eb',
-                              '--tw-prose-pre-bg': '#1f2937',
-                              '--tw-prose-th-borders': '#d1d5db',
-                              '--tw-prose-td-borders': '#e5e7eb',
-                            }}
-                          />
-                          <style jsx>{`
-                            .ProseMirror ul {
-                              list-style-type: disc;
-                              margin-left: 1.5rem;
-                              padding-left: 0;
-                            }
-                            .ProseMirror ol {
-                              list-style-type: decimal;
-                              margin-left: 1.5rem;
-                              padding-left: 0;
-                            }
-                            .ProseMirror li {
-                              margin: 0.25rem 0;
-                              padding-left: 0.5rem;
-                            }
-                          `}</style>
-                        </div>
-                      </>
-                    )}
-                    {!isMounted && (
-                      <div className="min-h-[400px] p-4 flex items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                          <span className="text-gray-500 text-sm">Loading editor...</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <RichTextarea
+                    value={formData.content}
+                    onChange={handleContentChange}
+                    placeholder="Write your article content here..."
+                    minHeight="400px"
+                    className={errors.content ? 'border-red-300' : 'border-gray-300'}
+                    error={!!errors.content}
+                  />
                 )}
                 {errors.content && (
                   <p className="mt-1 text-xs text-red-600 flex items-center">
@@ -745,24 +652,6 @@ export default function CreateArticle() {
                 )}
               </div>
 
-              {/* Excerpt */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <label htmlFor="excerpt" className="block text-xs font-medium text-gray-700 mb-1">
-                  Excerpt
-                </label>
-                <textarea
-                  id="excerpt"
-                  name="excerpt"
-                  value={formData.excerpt}
-                  onChange={handleInputChange}
-                  placeholder="Brief description of the article..."
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none text-xs"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  {formData.excerpt.length}/500 characters
-                </p>
-              </div>
             </div>
 
             {/* Sidebar */}
@@ -866,56 +755,44 @@ export default function CreateArticle() {
                 
                 {/* Category */}
                 <div className="mb-3">
-                  <label htmlFor="category" className="block text-xs font-medium text-gray-700 mb-1">
-                    Category *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="categoryId" className="block text-xs font-medium text-gray-700">
+                      Category *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCategoryModal(true)}
+                      className="flex items-center text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Add Category
+                    </button>
+                  </div>
                   <select
-                    id="category"
-                    name="category"
-                    value={formData.category}
+                    id="categoryId"
+                    name="categoryId"
+                    value={formData.categoryId}
                     onChange={handleInputChange}
+                    disabled={categoriesLoading}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
-                      errors.category ? 'border-red-300' : 'border-gray-300'
-                    }`}
+                      errors.categoryId ? 'border-red-300' : 'border-gray-300'
+                    } ${categoriesLoading ? 'bg-gray-100' : ''}`}
                   >
-                    <option value="">Select a category</option>
-                    {categories.map(category => (
-                      <option key={category} value={category}>{category}</option>
-                    ))}
+                        <option value="">{categoriesLoading ? 'Loading categories...' : articleCategories.length === 0 ? 'No categories available - Create one below' : 'Select a category'}</option>
+                        {articleCategories.map(category => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
                   </select>
-                  {errors.category && (
+                  {errors.categoryId && (
                     <p className="mt-1 text-xs text-red-600 flex items-center">
                       <AlertCircle className="w-3 h-3 mr-1" />
-                      {errors.category}
+                      {errors.categoryId}
                     </p>
                   )}
                 </div>
 
-                {/* Read Time */}
-                <div className="mb-3">
-                  <label htmlFor="readTime" className="block text-xs font-medium text-gray-700 mb-1">
-                    <Clock className="w-3 h-3 inline mr-1" />
-                    Read Time (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    id="readTime"
-                    name="readTime"
-                    value={formData.readTime}
-                    onChange={handleInputChange}
-                    min="1"
-                    placeholder="Auto-calculated"
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
-                      errors.readTime ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  />
-                  {errors.readTime && (
-                    <p className="mt-1 text-xs text-red-600 flex items-center">
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      {errors.readTime}
-                    </p>
-                  )}
-                </div>
 
                 {/* Status */}
                 <div className="mb-3">
@@ -951,16 +828,25 @@ export default function CreateArticle() {
                   <span className="flex items-center">
                     <FileText className="w-3 h-3 mr-1" />
                     {formData.content.trim().split(/\s+/).length} words
-                    {formData.readTime && (
-                      <>
-                        <span className="mx-2">•</span>
-                        <Clock className="w-3 h-3 mr-1" />
-                        {formData.readTime} min read
-                      </>
-                    )}
                   </span>
                 )}
               </div>
+
+              {/* Upload Progress */}
+              {isUploading && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-blue-700">Uploading files...</span>
+                    <span className="text-sm text-blue-600">{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
               
               <div className="flex items-center space-x-2">
                 <NextLink
@@ -971,10 +857,15 @@ export default function CreateArticle() {
                 </NextLink>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || isUploading}
                   className="flex items-center px-4 py-2 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {loading ? (
+                  {isUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Uploading... ({uploadProgress}%)
+                    </>
+                  ) : loading ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       Creating...
@@ -1001,6 +892,57 @@ export default function CreateArticle() {
             error={authorError}
           />
         )}
+
+        {/* Add Category Modal */}
+        {showAddCategoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Add New Category</h3>
+                <button
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Category Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={newCategoryData.name}
+                    onChange={handleCategoryInputChange}
+                    placeholder="Enter category name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                
+              </div>
+              
+              <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200">
+                <button
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  disabled={createCategoryLoading || !newCategoryData.name.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center"
+                >
+                  {createCategoryLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Create Category
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
@@ -1012,7 +954,6 @@ function AddAuthorModal({ onClose, onAddAuthor, loading, success, error }) {
     penName: '',
     bio: ''
   });
-  const [authorErrors, setAuthorErrors] = useState({});
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -1020,35 +961,18 @@ function AddAuthorModal({ onClose, onAddAuthor, loading, success, error }) {
       ...prev,
       [name]: value
     }));
-    
-    // Clear error when user starts typing
-    if (authorErrors[name]) {
-      setAuthorErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const validateAuthorForm = () => {
-    const newErrors = {};
-    
-    if (!authorData.penName.trim()) {
-      newErrors.penName = 'Pen name is required';
-    }
-    
-    if (!authorData.bio.trim()) {
-      newErrors.bio = 'Bio is required';
-    }
-    
-    setAuthorErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!validateAuthorForm()) {
+    if (!authorData.penName.trim()) {
+      toast.error('Pen name is required');
+      return;
+    }
+    
+    if (!authorData.bio.trim()) {
+      toast.error('Bio is required');
       return;
     }
     
@@ -1056,116 +980,73 @@ function AddAuthorModal({ onClose, onAddAuthor, loading, success, error }) {
       await onAddAuthor(authorData);
       // Reset form on success
       setAuthorData({ penName: '', bio: '' });
-      setAuthorErrors({});
+      onClose();
     } catch (error) {
       console.error('Error creating author:', error);
     }
   };
 
-  // Handle success
-  useEffect(() => {
-    if (success) {
-      toast.success('Author created successfully!');
-      onClose();
-    }
-  }, [success, onClose]);
-
-  // Handle error
-  useEffect(() => {
-    if (error) {
-      toast.error('Failed to create author. Please try again.');
-    }
-  }, [error]);
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-medium text-gray-900">Add New Author</h3>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <X className="w-4 h-4" />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Add New Author</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-5 h-5" />
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label htmlFor="penName" className="block text-xs font-medium text-gray-700 mb-1">
-                Pen Name *
-              </label>
-              <input
-                type="text"
-                id="penName"
-                name="penName"
-                value={authorData.penName}
-                onChange={handleInputChange}
-                placeholder="Enter author's pen name..."
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
-                  authorErrors.penName ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-              {authorErrors.penName && (
-                <p className="mt-1 text-xs text-red-600 flex items-center">
-                  <AlertCircle className="w-3 h-3 mr-1" />
-                  {authorErrors.penName}
-                </p>
-              )}
-            </div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Pen Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="penName"
+              value={authorData.penName}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Enter author's pen name"
+              required
+            />
+          </div>
 
-            <div>
-              <label htmlFor="bio" className="block text-xs font-medium text-gray-700 mb-1">
-                Bio *
-              </label>
-              <textarea
-                id="bio"
-                name="bio"
-                value={authorData.bio}
-                onChange={handleInputChange}
-                placeholder="Enter author's bio..."
-                rows={3}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none ${
-                  authorErrors.bio ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-              {authorErrors.bio && (
-                <p className="mt-1 text-xs text-red-600 flex items-center">
-                  <AlertCircle className="w-3 h-3 mr-1" />
-                  {authorErrors.bio}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end space-x-2 pt-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex items-center px-4 py-2 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Author
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Bio <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              name="bio"
+              rows={3}
+              value={authorData.bio}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Enter author's bio"
+              required
+            />
+          </div>
+          
+          <div className="flex items-center justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !authorData.penName.trim() || !authorData.bio.trim()}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? 'Creating...' : 'Create Author'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Search, Play, Clock, Eye, Calendar, User, X, Filter } from 'lucide-react';
 import Layout from '../../components/Layout';
-import useFetchObjects from '../../api/useFetchObjects';
+import useFetchObjects from '@/api/useFetchObjects';
 
 const videosData = [
   {
@@ -105,6 +105,7 @@ const sortOptions = [
 
 export default function Videos() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Debounced search term
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('DESC');
@@ -116,15 +117,30 @@ export default function Videos() {
   const [page, setPage] = useState(0);
   const [rowPerPage, setRowPerPage] = useState(9);
 
+  // Debounce search term - only update after user stops typing for 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to first page when search term changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(0);
+      }
+    }, 500); // Wait 500ms after user stops typing
+
+    // Cleanup function - cancel the timer if user types again
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
   // Fetch videos from backend (no authentication required for public access)
+  // Uses debouncedSearchTerm to avoid making API calls on every keystroke
   const {
     data: fetchedVideos,
     isLoading: loading,
     isError: error,
     refetch
   } = useFetchObjects(
-    ["videos", searchTerm, selectedCategory, sortBy, sortOrder, page, rowPerPage],
-    `videos/?search=${encodeURIComponent(searchTerm)}&category=${selectedCategory === 'All Categories' ? '' : selectedCategory}&status=published&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
+    ["videos", debouncedSearchTerm, selectedCategory, sortBy, sortOrder, page, rowPerPage],
+    `videos/?search=${encodeURIComponent(debouncedSearchTerm)}&category=${selectedCategory === 'All Categories' ? '' : selectedCategory}&status=published&sortBy=${sortBy}&sortOrder=${sortOrder}&page=${page + 1}&limit=${rowPerPage}`,
     null // No token needed for public access
   );
 
@@ -133,30 +149,8 @@ export default function Videos() {
   const totalPages = pagination.totalPages || 1;
   const totalItems = pagination.totalItems || 0;
 
-  // Use real API data if available, otherwise fall back to mock data
-  const videos = fetchedVideos?.data?.videos || videosData;
-  
-  const filteredVideos = videos.filter(video => {
-    const matchesSearch = video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (video.author?.firstName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                         video.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'All Categories' || video.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-  const sortedVideos = [...filteredVideos].sort((a, b) => {
-    switch (sortBy) {
-      case 'date':
-        return new Date(b.publishedAt || b.publishDate) - new Date(a.publishedAt || a.publishDate);
-      case 'views':
-        return (b.viewCount || b.views) - (a.viewCount || a.views);
-
-      case 'title':
-        return a.title.localeCompare(b.title);
-      default:
-        return 0;
-    }
-  });
+  // Use real API data - backend already handles filtering, sorting, and pagination
+  const videos = fetchedVideos?.data?.videos || [];
 
   const openVideoDetails = (video) => {
     setSelectedVideo(video);
@@ -165,6 +159,12 @@ export default function Videos() {
 
   return (
     <Layout>
+      {/* Top Loading Bar */}
+      {loading && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-orange-200 z-50">
+          <div className="h-full bg-orange-600 animate-pulse"></div>
+        </div>
+      )}
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-red-600 to-pink-600 text-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -182,35 +182,36 @@ export default function Videos() {
       {/* Search and Filters */}
       <section className="py-8 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                 <input
                   type="text"
                   placeholder="Search videos, authors, or topics..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  className="w-full pl-9 sm:pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm sm:text-base"
                 />
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-2 sm:gap-4">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center px-4 py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50"
+                className="inline-flex items-center px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 text-sm sm:text-base"
               >
-                <Filter className="w-5 h-5 mr-2" />
-                Filters
+                <Filter className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Filters</span>
+                <span className="sm:hidden">Filter</span>
               </button>
             </div>
           </div>
 
           {/* Advanced Filters */}
           {showFilters && (
-            <div className="mt-6 bg-white p-6 rounded-lg border border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mt-4 sm:mt-6 bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <select
@@ -306,7 +307,7 @@ export default function Videos() {
           {/* Videos Grid */}
           {!loading && !error && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {sortedVideos.map((video) => (
+            {videos.map((video) => (
               <div key={video.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100">
                 <div className="relative">
                   {video.youtubeId && video.youtubeId.trim() !== '' ? (
@@ -438,7 +439,7 @@ export default function Videos() {
           )}
 
           {/* Empty State */}
-          {!loading && !error && sortedVideos.length === 0 && (
+          {!loading && !error && videos.length === 0 && (
             <div className="text-center py-12">
               <Play className="mx-auto w-16 h-16 text-gray-400 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No videos found</h3>

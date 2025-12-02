@@ -280,90 +280,106 @@ const PDFReader = ({
 
   return (
     <div className={`flex flex-col bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
-      {/* Header Controls */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center space-x-4">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-            <BookOpen className="w-5 h-5 mr-2" />
-            {bookTitle}
+      {/* Minimal Header Controls */}
+      <div className="flex items-center justify-between p-2 sm:p-3 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+          <h3 className="text-sm sm:text-base font-medium text-gray-900 flex items-center truncate">
+            <BookOpen className="w-4 h-4 mr-1 sm:mr-2 text-indigo-600 flex-shrink-0" />
+            <span className="truncate">{bookTitle}</span>
           </h3>
+          <span className="hidden sm:inline text-sm text-gray-500">•</span>
+          <span className="text-xs sm:text-sm text-gray-500 whitespace-nowrap">
+            {pageNumber}/{numPages || 0}
+          </span>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1 flex-shrink-0">
           {/* Page Navigation */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1">
             <button
               onClick={goToPrevPage}
               disabled={pageNumber <= 1}
-              className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 sm:p-1.5 rounded text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Previous page"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
             
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 mx-1">
               <input
                 type="number"
                 value={pageNumber}
                 onChange={(e) => goToPage(e.target.value)}
-                className="w-16 px-2 py-1 text-center border border-gray-300 rounded-lg text-sm"
+                className="w-8 sm:w-10 px-1 py-0.5 text-center border border-gray-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                 min="1"
                 max={numPages || 1}
               />
-              <span className="text-sm text-gray-500">of {numPages || 0}</span>
             </div>
             
             <button
               onClick={goToNextPage}
               disabled={pageNumber >= (numPages || 1)}
-              className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1 sm:p-1.5 rounded text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Next page"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
           </div>
           
           {/* Zoom Controls */}
-          <div className="flex items-center space-x-2 border-l border-gray-300 pl-4">
+          <div className="hidden sm:flex items-center space-x-1 border-l border-gray-300 pl-2">
             <button
               onClick={zoomOut}
-              className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
+              className="p-1 rounded text-gray-600 hover:bg-gray-200 transition-colors"
+              title="Zoom out"
             >
-              <ZoomOut className="w-4 h-4" />
+              <ZoomOut className="w-3 h-3" />
             </button>
             
-            <span className="text-sm text-gray-600 min-w-[3rem] text-center">
+            <span className="text-xs text-gray-600 min-w-[2rem] text-center">
               {Math.round(scale * 100)}%
             </span>
             
             <button
               onClick={zoomIn}
-              className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
+              className="p-1 rounded text-gray-600 hover:bg-gray-200 transition-colors"
+              title="Zoom in"
             >
-              <ZoomIn className="w-4 h-4" />
+              <ZoomIn className="w-3 h-3" />
             </button>
             
             <button
               onClick={resetZoom}
-              className="px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-100"
+              className="px-1.5 py-0.5 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-200 transition-colors"
+              title="Reset zoom"
             >
               Reset
             </button>
           </div>
           
-          {/* Additional Controls */}
-          <div className="flex items-center space-x-2 border-l border-gray-300 pl-4">
+          {/* Mobile Zoom Controls */}
+          <div className="sm:hidden flex items-center space-x-1 border-l border-gray-300 pl-2">
             <button
-              onClick={rotate}
-              className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
-              title="Rotate"
+              onClick={zoomOut}
+              className="p-1 rounded text-gray-600 hover:bg-gray-200 transition-colors"
+              title="Zoom out"
             >
-              <RotateCw className="w-4 h-4" />
+              <ZoomOut className="w-3 h-3" />
+            </button>
+            
+            <button
+              onClick={zoomIn}
+              className="p-1 rounded text-gray-600 hover:bg-gray-200 transition-colors"
+              title="Zoom in"
+            >
+              <ZoomIn className="w-3 h-3" />
             </button>
           </div>
         </div>
       </div>
 
       {/* PDF Viewer */}
-      <div className="flex-1 overflow-auto bg-gray-100 p-4">
+      <div className="flex-1 overflow-auto bg-gray-50 p-2 sm:p-4">
         <div className="flex justify-center">
           {isClient ? (
             <Document
@@ -372,21 +388,21 @@ const PDFReader = ({
               onLoadSuccess={onDocumentLoadSuccess}
               onLoadError={onDocumentLoadError}
               loading={
-                <div className="flex items-center justify-center min-h-[400px]">
+                <div className="flex items-center justify-center min-h-[300px] sm:min-h-[400px]">
                   <div className="text-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">Loading PDF...</p>
+                    <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-indigo-600 mx-auto mb-2" />
+                    <p className="text-xs sm:text-sm text-gray-600">Loading PDF...</p>
                     <p className="text-xs text-gray-500">Streaming from server...</p>
                   </div>
                 </div>
               }
               error={
-                <div className="flex flex-col items-center justify-center min-h-[400px] text-red-600">
-                  <AlertCircle className="w-12 h-12 mb-4" />
-                  <p>Failed to load PDF</p>
+                <div className="flex flex-col items-center justify-center min-h-[300px] sm:min-h-[400px] text-red-600">
+                  <AlertCircle className="w-8 h-8 sm:w-12 sm:h-12 mb-4" />
+                  <p className="text-sm sm:text-base">Failed to load PDF</p>
                   <button
                     onClick={retryLoad}
-                    className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    className="mt-4 px-3 py-2 sm:px-4 sm:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
                   >
                     Retry
                   </button>
@@ -398,27 +414,16 @@ const PDFReader = ({
                 pageNumber={pageNumber}
                 scale={scale}
                 rotate={rotation}
-                className="shadow-lg"
+                className="shadow-lg rounded-lg max-w-full h-auto"
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />
             </Document>
           ) : (
-            <div className="flex items-center justify-center min-h-[400px]">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+            <div className="flex items-center justify-center min-h-[300px] sm:min-h-[400px]">
+              <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-indigo-600" />
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Footer with page info */}
-      <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50 text-sm text-gray-600">
-        <div>
-          Page {pageNumber} of {numPages || 0}
-        </div>
-        <div className="flex items-center space-x-4">
-          <span>Zoom: {Math.round(scale * 100)}%</span>
-          <span>Rotation: {rotation}°</span>
         </div>
       </div>
     </div>

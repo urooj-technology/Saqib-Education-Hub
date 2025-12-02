@@ -2,9 +2,30 @@ const Job = require('../models/Job');
 const User = require('../models/User');
 const Province = require('../models/Province');
 const Company = require('../models/Company');
-const { Op, sequelize } = require('sequelize');
+const { Op, sequelize, col, fn } = require('sequelize');
 const logger = require('../config/logger');
-const { createError } = require('../utils/errorHandler');
+const { createError } = require('../middleware/errorHandler');
+const cacheService = require('../config/cache');
+
+/**
+ * Helper: Get province map with caching
+ * Caches provinces for 1 hour to avoid repeated database queries
+ * @returns {Promise<Map>} - Map of provinceId => provinceName
+ */
+const getProvinceMap = async () => {
+  return cacheService.getOrSet(
+    'province_map',
+    async () => {
+      logger.info('Fetching provinces from database (cache miss)');
+      const allProvinces = await Province.findAll({ 
+        attributes: ['id', 'name'],
+        order: [['name', 'ASC']]
+      });
+      return new Map(allProvinces.map(p => [p.id, p.name]));
+    },
+    3600 // Cache for 1 hour
+  );
+};
 
 /**
  * @desc    Get all jobs with pagination, filtering, and search
@@ -24,9 +45,13 @@ const getAllJobs = async (req, res, next) => {
       maxSalary,
       experience,
       province,
+      gender,
+      expiring,
+      company,
       sortBy = 'createdAt',
       sortOrder = 'DESC'
     } = req.query;
+
 
     // First, check and update expired jobs automatically
     await Job.update(
@@ -59,7 +84,17 @@ const getAllJobs = async (req, res, next) => {
     }
     
     if (category) {
-      whereClause.category = category;
+      // If category is a string (category name), find the category ID
+      if (isNaN(category)) {
+        const { JobCategory } = require('../models');
+        const categoryRecord = await JobCategory.findOne({ where: { name: category } });
+        if (categoryRecord) {
+          whereClause.categoryId = categoryRecord.id;
+        }
+      } else {
+        // If category is a number (category ID), use it directly
+        whereClause.categoryId = parseInt(category);
+      }
     }
     
     if (type) {
@@ -69,6 +104,36 @@ const getAllJobs = async (req, res, next) => {
     if (experience) {
       whereClause.experience = experience;
     }
+    
+    if (gender) {
+      // For gender filtering, we need to handle 'any' as well as specific genders
+      if (gender === 'female') {
+        whereClause.gender = { [Op.in]: ['female', 'any'] };
+      } else if (gender === 'male') {
+        whereClause.gender = { [Op.in]: ['male', 'any'] };
+      } else {
+        whereClause.gender = gender;
+      }
+    }
+    
+    if (company) {
+      whereClause.company_id = parseInt(company);
+    }
+    
+    // Handle expiring jobs filter
+    if (expiring === 'today') {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      
+      whereClause.closing_date = {
+        [Op.gte]: startOfDay,
+        [Op.lt]: endOfDay
+      };
+    }
+    
+    // Build OR conditions array for complex queries
+    const orConditions = [];
     
     // Province filtering
     if (province) {
@@ -80,20 +145,33 @@ const getAllJobs = async (req, res, next) => {
         });
         
         if (provinceRecord) {
-          // Filter by both province_id and province_ids array
-          whereClause[Op.or] = [
+          // Add province filtering conditions
+          orConditions.push(
             { province_id: provinceRecord.id },
             { 
               province_ids: {
                 [Op.like]: `%${provinceRecord.id}%`
               }
             }
-          ];
+          );
         }
       } catch (provinceError) {
         logger.error('Error in province filtering:', provinceError);
         // Continue without province filtering if there's an error
       }
+    }
+    
+    // Search functionality
+    if (search) {
+      orConditions.push(
+        { title: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } }
+      );
+    }
+    
+    // Add OR conditions to whereClause if any exist
+    if (orConditions.length > 0) {
+      whereClause[Op.or] = orConditions;
     }
     
     // Salary range filtering
@@ -102,15 +180,7 @@ const getAllJobs = async (req, res, next) => {
       if (minSalary) whereClause.salary[Op.gte] = parseFloat(minSalary);
       if (maxSalary) whereClause.salary[Op.lte] = parseFloat(maxSalary);
     }
-    
-    // Search functionality
-    if (search) {
-      whereClause[Op.or] = [
-        { title: { [Op.like]: `%${search}%` } },
-        { description: { [Op.like]: `%${search}%` } },
-        { requirements: { [Op.like]: `%${search}%` } }
-      ];
-    }
+
 
     // Map custom sort options to database fields
     const sortFieldMapping = {
@@ -123,7 +193,8 @@ const getAllJobs = async (req, res, next) => {
       'type': 'type',
       'experience': 'experience',
       'createdAt': 'createdAt',
-      'deadline': 'deadline'
+      'deadline': 'deadline',
+      'closing_date': 'deadline'
     };
     
     // Get the actual database field name
@@ -132,7 +203,8 @@ const getAllJobs = async (req, res, next) => {
     // Validate sortBy field
     const allowedSortFields = [
       'title', 'category', 'type', 'salary', 
-      'experience', 'createdAt', 'deadline'
+      'experience', 'createdAt', 'deadline', 'status',
+      'applicationCount'
     ];
     
     if (!allowedSortFields.includes(actualSortField)) {
@@ -177,6 +249,11 @@ const getAllJobs = async (req, res, next) => {
           model: Company,
           as: 'company',
           attributes: ['id', 'name', 'logo', 'description']
+        },
+        {
+          model: require('../models').JobCategory,
+          as: 'category',
+          attributes: ['id', 'name']
         }
       ],
       order: [[actualSortField, actualSortOrder]],
@@ -184,9 +261,8 @@ const getAllJobs = async (req, res, next) => {
       offset: offset
     });
 
-    // Populate province names for province_ids arrays
-    const allProvinces = await Province.findAll({ attributes: ['id', 'name'] });
-    const provinceMap = new Map(allProvinces.map(p => [p.id, p.name]));
+    // PERFORMANCE: Use cached province map instead of fetching from DB every time
+    const provinceMap = await getProvinceMap();
     
     // Add province names to each job's province_ids
     jobs.forEach(job => {
@@ -225,6 +301,9 @@ const getAllJobs = async (req, res, next) => {
         type: type || null,
         status: status || null,
         experience: experience || null,
+        gender: gender || null,
+        expiring: expiring || null,
+        company: company || null,
         minSalary: minSalary || null,
         maxSalary: maxSalary || null,
         search: search || null
@@ -322,9 +401,8 @@ const getJobById = async (req, res, next) => {
       return next(createError(404, 'Job not found'));
     }
 
-    // Populate province names for province_ids array
-    const allProvinces = await Province.findAll({ attributes: ['id', 'name'] });
-    const provinceMap = new Map(allProvinces.map(p => [p.id, p.name]));
+    // PERFORMANCE: Use cached province map
+    const provinceMap = await getProvinceMap();
     
     if (job.province_ids && Array.isArray(job.province_ids)) {
       job.dataValues.province_names = job.province_ids.map(id => provinceMap.get(id)).filter(Boolean);
@@ -356,6 +434,7 @@ const createJob = async (req, res, next) => {
       description,
       company_id,
       category,
+      categoryId,
       type,
       province_id,
       province_ids,
@@ -419,6 +498,22 @@ const createJob = async (req, res, next) => {
       return next(createError(400, 'Invalid company selected'));
     }
 
+    // Handle category - support both categoryId (number) and category (string)
+    let finalCategoryId;
+    if (categoryId) {
+      finalCategoryId = parseInt(categoryId);
+    } else if (category) {
+      // If category is provided as string, find the category ID
+      const { JobCategory } = require('../models');
+      const categoryRecord = await JobCategory.findOne({ where: { name: category } });
+      if (!categoryRecord) {
+        return next(createError(400, 'Invalid category selected'));
+      }
+      finalCategoryId = categoryRecord.id;
+    } else {
+      return next(createError(400, 'Category is required'));
+    }
+
     // Create job
     console.log('Creating job with data:', {
       title,
@@ -469,7 +564,7 @@ const createJob = async (req, res, next) => {
       description,
       company_id: parseInt(company_id),
       author_id: req.user.id,
-      category,
+      categoryId: finalCategoryId,
       type,
       province_id: finalProvinceId,
       province_ids: finalProvinceIds,
@@ -494,29 +589,35 @@ const createJob = async (req, res, next) => {
       closing_date: closing_date ? new Date(closing_date) : null
     });
 
-    // Increment job count in subscription
-    // Increment job count for subscription (if user has one)
+    // Increment job count in subscription (async, non-blocking)
     if (activeSubscription) {
-      await activeSubscription.incrementJobCount();
+      activeSubscription.incrementJobCount().catch(err => {
+        logger.warn('Failed to increment job count:', err.message);
+      });
     }
 
-    // Include postedBy information in response
-    const jobWithPostedBy = await Job.findByPk(job.id, {
-      include: [
-        {
-          model: User,
-          as: 'postedBy',
-          attributes: ['id', 'firstName', 'email', 'avatar']
-        }
-      ]
-    });
-
-    logger.info(`New job created: ${job.title} at ${job.company} by ${req.user.email}`);
+    // Return minimal response immediately
+    const jobData = {
+      id: job.id,
+      title: job.title,
+      status: job.status,
+      categoryId: job.categoryId,
+      type: job.type,
+      company_id: job.company_id,
+      province_id: job.province_id,
+      remote: job.remote,
+      salary_range: job.salary_range,
+      currency: job.currency,
+      experience: job.experience,
+      deadline: job.deadline,
+      featured: job.featured,
+      createdAt: job.createdAt
+    };
 
     res.status(201).json({
       status: 'success',
       message: 'Job created successfully',
-      data: { job: jobWithPostedBy }
+      data: { job: jobData }
     });
 
   } catch (error) {
@@ -602,6 +703,52 @@ const updateJob = async (req, res, next) => {
 };
 
 /**
+ * @desc    Toggle job status between 'draft' and 'active'
+ * @route   PATCH /api/jobs/:id/toggle-status
+ * @access  Private (Admin/HR - job owner)
+ */
+const toggleJobStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Find job
+    const job = await Job.findByPk(id);
+    if (!job) {
+      return next(createError(404, 'Job not found'));
+    }
+
+    // Check if user is job poster or admin
+    if (req.user.role !== 'admin' && job.author_id !== req.user.id) {
+      return next(createError(403, 'Not authorized to update this job'));
+    }
+
+    // Toggle between 'draft' and 'active'
+    const newStatus = job.status === 'active' ? 'draft' : 'active';
+    
+    // Update job status
+    await job.update({ status: newStatus });
+
+    logger.info(`Job status toggled: ${job.title} status changed to ${newStatus} by ${req.user.email}`);
+
+    res.status(200).json({
+      status: 'success',
+      message: `Job status updated to ${newStatus}`,
+      data: {
+        job: {
+          id: job.id,
+          title: job.title,
+          status: job.status
+        }
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error in toggleJobStatus:', error);
+    next(createError(500, 'Failed to toggle job status'));
+  }
+};
+
+/**
  * @desc    Delete job
  * @route   DELETE /api/jobs/:id
  * @access  Private (Admin/HR - job owner)
@@ -649,9 +796,24 @@ const getJobsByCategory = async (req, res, next) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const limitNum = parseInt(limit);
 
+    // Handle category parameter - support both category name and ID
+    let categoryId;
+    if (isNaN(category)) {
+      // Category is a name, find the ID
+      const { JobCategory } = require('../models');
+      const categoryRecord = await JobCategory.findOne({ where: { name: category } });
+      if (!categoryRecord) {
+        return next(createError(404, 'Category not found'));
+      }
+      categoryId = categoryRecord.id;
+    } else {
+      // Category is an ID
+      categoryId = parseInt(category);
+    }
+
     const { count, rows: jobs } = await Job.findAndCountAll({
       where: { 
-        category, 
+        categoryId, 
         status: 'active' 
       },
       include: [
@@ -659,6 +821,11 @@ const getJobsByCategory = async (req, res, next) => {
           model: User,
           as: 'postedBy',
           attributes: ['id', 'firstName', 'email', 'avatar']
+        },
+        {
+          model: require('../models').JobCategory,
+          as: 'category',
+          attributes: ['id', 'name']
         }
       ],
       order: [[sortBy, sortOrder.toUpperCase()]],
@@ -761,10 +928,10 @@ const getJobStats = async (req, res, next) => {
         'type',
         'status',
         'experience',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-        [sequelize.fn('AVG', sequelize.col('salary')), 'avgSalary'],
-        [sequelize.fn('SUM', sequelize.col('viewCount')), 'totalViews'],
-        [sequelize.fn('SUM', sequelize.col('applicationCount')), 'totalApplications']
+        [fn('COUNT', col('id')), 'count'],
+        [fn('AVG', col('salary')), 'avgSalary'],
+        [fn('SUM', col('viewCount')), 'totalViews'],
+        [fn('SUM', col('applicationCount')), 'totalApplications']
       ],
       group: ['category', 'type', 'status', 'experience']
     });
@@ -914,7 +1081,7 @@ const getSimilarJobs = async (req, res, next) => {
     const similarJobs = await Job.findAll({
       where: {
         id: { [Op.ne]: id },
-        category: job.category,
+        categoryId: job.categoryId,
         status: 'active'
       },
       include: [
@@ -1129,6 +1296,7 @@ module.exports = {
   getJobById,
   createJob,
   updateJob,
+  toggleJobStatus,
   deleteJob,
   getFeaturedJobs,
   getJobsByCategory,
